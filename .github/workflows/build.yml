@@ -136,7 +136,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r27
+          ndk-version: r28
 
       - name: Download libcronet.a
         env:
@@ -150,6 +150,13 @@ jobs:
           # Rename to libcronet.a so the linker finds it
           cp "lib/${{ env.ASSET }}" "lib/libcronet.a"
           ls -la lib/
+
+      - name: Workaround NDK r28 broken libdl.a
+        run: |
+          # NDK r28 ships a broken libdl.a (Invalid record) that breaks
+          # Rust's -ldl linking. Remove it so the linker picks up libdl.so instead.
+          NDK_CXX_DIR="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"
+          find "$NDK_CXX_DIR" -name 'libdl.a' -delete
 
       - name: Build (static-link)
         env:
