@@ -23,6 +23,8 @@ env:
   RELEASE_ORG: rust-proxy
   RELEASE_REPO: cronet-binaries
   RELEASE_TAG: latest
+  # Default: the linker searches for `libcronet.a`.
+  # We rename the downloaded asset to match.
   CRONET_STATIC_NAME: cronet
 
 jobs:
@@ -41,12 +43,18 @@ jobs:
           - rust_target: aarch64-unknown-linux-gnu
             release_arch: arm64
             suffix: so
+            linker: aarch64-linux-gnu-gcc
+            cc_pkg: gcc-aarch64-linux-gnu
           - rust_target: arm-unknown-linux-gnueabihf
             release_arch: arm
             suffix: so
+            linker: arm-linux-gnueabihf-gcc
+            cc_pkg: gcc-arm-linux-gnueabihf
           - rust_target: i686-unknown-linux-gnu
             release_arch: "386"
             suffix: so
+            linker: i686-linux-gnu-gcc
+            cc_pkg: gcc-i686-linux-gnu
     env:
       ASSET: libcronet-linux-${{ matrix.release_arch }}.${{ matrix.suffix }}
     steps:
@@ -58,13 +66,10 @@ jobs:
           target: ${{ matrix.rust_target }}
 
       - name: Install cross-linker (non-native)
-        if: matrix.rust_target != 'x86_64-unknown-linux-gnu'
+        if: matrix.linker != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabihf \
-            gcc-i686-linux-gnu
+          sudo apt-get install -y ${{ matrix.cc_pkg }}
 
       - name: Download libcronet.so
         env:
@@ -79,6 +84,10 @@ jobs:
           ls -la lib/
 
       - name: Build (dynamic)
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: ${{ matrix.linker }}
+          CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
         run: cargo build --target ${{ matrix.rust_target }}
 
       - name: Test (native only)
@@ -86,41 +95,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/lib
         run: |
-          # Run tests that don't require libcronet (pure logic tests)
-          cargo test --target ${{ matrix.rust_target }} \
-            -- --skip requires_libcronet --skip ignore
-
-      - name: Quick smoke test (native only)
-        if: matrix.rust_target == 'x86_64-unknown-linux-gnu'
-        env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/lib
-        run: |
-          echo "Verifying library loads correctly..."
-          # Write a quick smoke program
-          cat > /tmp/smoke.rs << 'EOF'
-          fn main() {
-              unsafe {
-                  match cronet_rs::sys::load_library("lib/libcronet-linux-amd64.so") {
-                      Ok(_) => println!("PASS: libcronet loaded"),
-                      Err(e) => {
-                          eprintln!("FAIL: could not load libcronet: {}", e);
-                          std::process::exit(1);
-                      }
-                  }
-                  let engine = cronet_rs::Engine::new();
-                  if engine.raw.0 != 0 {
-                      println!("PASS: engine created (raw={})", engine.raw.0);
-                  } else {
-                      eprintln!("FAIL: engine handle is null");
-                      std::process::exit(1);
-                  }
-              }
-          }
-          EOF
-          # Build and run as a separate binary
-          # (We use an example-like approach since we're in the workspace)
-          RUSTFLAGS="--edition 2021" cargo run --example smoke 2>/dev/null || \
-          echo "(smoke test binary not set up as example; build itself is the verification)"
+          cargo test --target ${{ matrix.rust_target }}
 
   #############################################################################
   # Android — static-link mode (.a downloaded + NDK)
@@ -172,19 +147,20 @@ jobs:
             --repo "${{ env.RELEASE_ORG }}/${{ env.RELEASE_REPO }}" \
             --pattern "${{ env.ASSET }}" \
             --output "lib/${{ env.ASSET }}"
+          # Rename to libcronet.a so the linker finds it
+          cp "lib/${{ env.ASSET }}" "lib/libcronet.a"
           ls -la lib/
 
       - name: Build (static-link)
         env:
           CRONET_LIB_DIR: ${{ github.workspace }}/lib
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc }}
-          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc }}
-          CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc }}
-          CARGO_TARGET_I686_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc }}
-          CC_${{ matrix.rust_target }}: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc }}
-          AR_${{ matrix.rust_target }}: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_ar }}
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang
+          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android23-clang
+          CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi23-clang
+          CARGO_TARGET_I686_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android23-clang
         run: |
-          # Rust target-arch aware linker env vars
+          # Export NDK bin to PATH for ar and other tools
+          export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           cargo build --target ${{ matrix.rust_target }} \
             --features static-link
 
@@ -199,6 +175,7 @@ jobs:
         include:
           - rust_target: aarch64-apple-darwin
             release_arch: arm64
+            # macOS arm64 runner is native, no extra config needed
           - rust_target: x86_64-apple-darwin
             release_arch: amd64
     env:
@@ -220,6 +197,8 @@ jobs:
             --repo "${{ env.RELEASE_ORG }}/${{ env.RELEASE_REPO }}" \
             --pattern "${{ env.ASSET }}" \
             --output "lib/${{ env.ASSET }}"
+          # Rename to libcronet.a for the linker
+          cp "lib/${{ env.ASSET }}" "lib/libcronet.a"
           ls -la lib/
 
       - name: Build (static-link)
@@ -235,8 +214,7 @@ jobs:
           CRONET_LIB_DIR: ${{ github.workspace }}/lib
         run: |
           cargo test --target ${{ matrix.rust_target }} \
-            --features static-link \
-            -- --skip ignore
+            --features static-link
 
   #############################################################################
   # Windows — dynamic mode (.dll downloaded)
@@ -276,12 +254,13 @@ jobs:
       - name: Build (dynamic)
         run: cargo build --target ${{ matrix.rust_target }}
 
+      # Test step — use pwsh instead of bash to keep cargo in PATH
       - name: Test (native amd64 only)
         if: matrix.rust_target == 'x86_64-pc-windows-msvc'
         env:
-          PATH: ${{ github.workspace }}\lib;${{ env.PATH }}
-        shell: bash
+          CRONET_DLL_DIR: ${{ github.workspace }}\lib
+        shell: pwsh
         run: |
-          cargo test --target ${{ matrix.rust_target }} \
-            -- --skip requires_libcronet --skip ignore
-          echo "Build verified for ${{ matrix.rust_target }}"
+          # Add lib dir to PATH so the .dll can be found at runtime
+          $env:Path = "${{ github.workspace }}\lib;" + $env:Path
+          cargo test --target ${{ matrix.rust_target }}
