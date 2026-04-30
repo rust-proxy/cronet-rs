@@ -151,13 +151,6 @@ jobs:
           cp "lib/${{ env.ASSET }}" "lib/libcronet.a"
           ls -la lib/
 
-      - name: Workaround NDK r28 broken libdl.a
-        run: |
-          # NDK r28 ships a broken libdl.a (Invalid record) that breaks
-          # Rust's -ldl linking. Remove it so the linker picks up libdl.so instead.
-          NDK_CXX_DIR="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"
-          find "$NDK_CXX_DIR" -name 'libdl.a' -delete
-
       - name: Build (static-link)
         env:
           CRONET_LIB_DIR: ${{ github.workspace }}/lib
