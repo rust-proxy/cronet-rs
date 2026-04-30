@@ -1,4 +1,0 @@
-cargo:rerun-if-env-changed=CRONET_LIB_DIR
-cargo:rerun-if-env-changed=CRONET_STATIC_NAME
-cargo:rustc-link-lib=static=cronet
-cargo:rustc-cfg=cronet_static_link
