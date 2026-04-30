@@ -24,11 +24,20 @@ default = ["dynamic"]
 # Works on Linux, Windows, Android. NOT supported on macOS/iOS.
 dynamic = ["dep:libloading"]
 
-# Static link mode: link libcronet at compile time
-# Required on macOS and iOS. Also works on Linux/Windows.
-# Set CRONET_LIB_DIR env var to specify the library search path.
+# Static link mode: link libcronet.a at compile time.
+#
+# Required on macOS, iOS, and recommended on Android.
+# Also works on Linux and Windows.
+#
+# Usage:
+#   CRONET_LIB_DIR=/path/to/libdir cargo build --features static-link
+#
+# On Android you additionally need ANDROID_NDK_HOME set (or NDK on PATH)
+# so the linker can find libc++_static.a.
 static-link = []
 
-[build-dependencies]
-# Only needed for static-link on macOS/iOS
-cfg-if = "1"
+# Convenience alias: use static-link on Android targets.
+# Same as `static-link`.
+android-static = ["static-link"]
+
+

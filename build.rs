@@ -19,6 +19,8 @@ fn main() {
         return;
     }
 
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
     println!("cargo:rerun-if-env-changed=CRONET_LIB_DIR");
     println!("cargo:rerun-if-env-changed=CRONET_STATIC_NAME");
 
@@ -31,12 +33,40 @@ fn main() {
     let lib_name = env::var("CRONET_STATIC_NAME").unwrap_or_else(|_| "cronet".to_string());
     println!("cargo:rustc-link-lib=static={}", lib_name);
 
-    // On macOS, also link necessary frameworks
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os == "macos" || target_os == "ios" {
-        println!("cargo:rustc-link-lib=framework=CoreFoundation");
-        println!("cargo:rustc-link-lib=framework=Security");
-        println!("cargo:rustc-link-lib=framework=SystemConfiguration");
+    // --- Platform-specific link dependencies ---
+
+    match target_os.as_str() {
+        "macos" | "ios" => {
+            // Apple platforms: required system frameworks
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=Security");
+            println!("cargo:rustc-link-lib=framework=SystemConfiguration");
+        }
+        "android" => {
+            // Android NDK: statically link libc++ so the .apk doesn't depend on
+            // a specific NDK runtime version.
+            //
+            // The NDK toolchain provides libc++_static.a; it must be placed
+            // *after* libcronet on the linker line. To ensure correct ordering
+            // we emit both as static libs — rustc places them in dependency
+            // order relative to one another.
+            println!("cargo:rustc-link-lib=static=c++_static");
+
+            // On Android, `cargo:rustc-link-lib=static=c++_static` is sometimes
+            // insufficient; also add `c++` as a fallback for different NDK layouts.
+            println!("cargo:rustc-link-lib=c++");
+        }
+        _ => {
+            // Linux, Windows: libcronet is built with C++ so we may need the
+            // C++ standard library. On glibc Linux this is normally linked
+            // automatically by the compiler driver; on musl or Windows static
+            // mode it may need explicit handling.
+            if target_os == "linux" {
+                // For fully static musl builds, the user may need:
+                //   RUSTFLAGS="-C target-feature=+crt-static"
+                // libstdc++ is pulled in automatically by rustc.
+            }
+        }
     }
 
     println!("cargo:rustc-cfg=cronet_static_link");

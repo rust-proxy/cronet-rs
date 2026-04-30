@@ -12,9 +12,11 @@
 //! | Feature | Default | Platforms | Description |
 //! |---|---|---|---|
 //! | `dynamic` | ✅ | Linux, Windows, Android | Load `libcronet` at runtime via dlopen/LoadLibrary |
-//! | `static-link` | ❌ | macOS, iOS, Linux, Windows | Link `libcronet.a` at compile time |
+//! | `static-link` | ❌ | macOS, iOS, Android, Linux, Windows | Link `libcronet.a` at compile time |
+//! | `android-static` | ❌ | Android | Alias for `static-link` |
 //!
 //! **macOS/iOS must use `static-link`** — dlopen is not available.
+//! **Android should prefer `static-link`** for stable production builds.
 //!
 //! ```toml
 //! [dependencies]
