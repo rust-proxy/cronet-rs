@@ -45,16 +45,30 @@ fn main() {
         "android" => {
             // Android NDK: statically link libc++ so the .apk doesn't depend on
             // a specific NDK runtime version.
-            //
-            // The NDK toolchain provides libc++_static.a; it must be placed
-            // *after* libcronet on the linker line. To ensure correct ordering
-            // we emit both as static libs — rustc places them in dependency
-            // order relative to one another.
             println!("cargo:rustc-link-lib=static=c++_static");
 
-            // On Android, `cargo:rustc-link-lib=static=c++_static` is sometimes
-            // insufficient; also add `c++` as a fallback for different NDK layouts.
-            println!("cargo:rustc-link-lib=c++");
+            // Resolve NDK c++ library directory for the linker.
+            // libc++_static.a lives under:
+            //   $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/<target>
+            if let Ok(ndk_home) = env::var("ANDROID_NDK_HOME") {
+                let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+                let target_vendor = env::var("CARGO_CFG_TARGET_VENDOR").unwrap_or_default();
+                let ndk_target = match (target_arch.as_str(), target_vendor.as_str()) {
+                    ("aarch64", _) => "aarch64-linux-android",
+                    ("x86_64", _) => "x86_64-linux-android",
+                    ("arm", _) => "armv7a-linux-androideabi",
+                    ("x86", _) => "i686-linux-android",
+                    _ => "",
+                };
+                if !ndk_target.is_empty() {
+                    let cxx_path = std::path::Path::new(&ndk_home)
+                        .join("toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib")
+                        .join(ndk_target);
+                    if cxx_path.exists() {
+                        println!("cargo:rustc-link-search=native={}", cxx_path.display());
+                    }
+                }
+            }
         }
         _ => {
             // Linux, Windows: libcronet is built with C++ so we may need the
