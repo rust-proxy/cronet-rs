@@ -1,0 +1,34 @@
+[package]
+name = "cronet-rs"
+version = "0.1.0"
+edition = "2024"
+description = "Rust bindings for Chromium Cronet (naiveproxy) - port of github.com/SagerNet/cronet-go"
+license = "MIT"
+repository = "https://github.com/Itsusinn/cronet-rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+log = "0.4"
+thiserror = "2"
+rand = "0.8"
+
+# Dynamic loading (purego path) — Linux/Windows/Android
+libloading = { version = "0.8", optional = true }
+
+[features]
+default = ["dynamic"]
+
+# Dynamic mode: load libcronet at runtime via dlopen/LoadLibrary
+# Works on Linux, Windows, Android. NOT supported on macOS/iOS.
+dynamic = ["dep:libloading"]
+
+# Static link mode: link libcronet at compile time
+# Required on macOS and iOS. Also works on Linux/Windows.
+# Set CRONET_LIB_DIR env var to specify the library search path.
+static-link = []
+
+[build-dependencies]
+# Only needed for static-link on macOS/iOS
+cfg-if = "1"
