@@ -224,6 +224,56 @@ jobs:
             --features static-link
 
   #############################################################################
+  # iOS — static-link mode (.a downloaded)
+  # Requires macOS runner; builds for device + simulator targets.
+  #############################################################################
+  ios:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust_target: aarch64-apple-ios
+            release_arch: arm64
+            display_name: ios-arm64-device
+          - rust_target: aarch64-apple-ios-sim
+            release_arch: arm64_simulator
+            display_name: ios-arm64-sim
+          - rust_target: x86_64-apple-ios
+            release_arch: amd64_simulator
+            display_name: ios-x86_64-sim
+    env:
+      ASSET: libcronet-ios-${{ matrix.release_arch }}.a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.rust_target }}
+
+      - name: Download libcronet.a
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p lib
+          gh release download "${{ env.RELEASE_TAG }}" \
+            --repo "${{ env.RELEASE_ORG }}/${{ env.RELEASE_REPO }}" \
+            --pattern "${{ env.ASSET }}" \
+            --output "lib/${{ env.ASSET }}"
+          # Rename to libcronet.a for the linker
+          cp "lib/${{ env.ASSET }}" "lib/libcronet.a"
+          ls -la lib/
+
+      - name: Build (static-link)
+        env:
+          CRONET_LIB_DIR: ${{ github.workspace }}/lib
+        run: |
+          # iOS has no dlopen, so we must disable the default dynamic feature
+          cargo build --target ${{ matrix.rust_target }} \
+            --no-default-features --features static-link
+
+  #############################################################################
   # Windows — dynamic mode (.dll downloaded)
   #############################################################################
   windows:
