@@ -169,8 +169,11 @@ jobs:
         run: |
           # Export NDK bin to PATH for ar and other tools
           export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          # Build only the rlib (static rust library), not cdylib (.so)
+          # because libcronet.a for some android arches (x86_64, i686, arm)
+          # wasn't compiled with -fPIC, which breaks cdylib linking.
           cargo build --target ${{ matrix.rust_target }} \
-            --features static-link
+            --features static-link --lib
 
   #############################################################################
   # macOS (Darwin) — static-link mode (.a downloaded)
