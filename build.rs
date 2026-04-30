@@ -53,19 +53,20 @@ fn main() {
             if let Ok(ndk_home) = env::var("ANDROID_NDK_HOME") {
                 let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
                 let target_vendor = env::var("CARGO_CFG_TARGET_VENDOR").unwrap_or_default();
-                let ndk_target = match (target_arch.as_str(), target_vendor.as_str()) {
-                    ("aarch64", _) => "aarch64-linux-android",
-                    ("x86_64", _) => "x86_64-linux-android",
-                    ("arm", _) => "armv7a-linux-androideabi",
-                    ("x86", _) => "i686-linux-android",
-                    _ => "",
+                let ndk_candidates: &[&str] = match (target_arch.as_str(), target_vendor.as_str()) {
+                    ("aarch64", _) => &["aarch64-linux-android"],
+                    ("x86_64", _) => &["x86_64-linux-android"],
+                    ("arm", _) => &["armv7a-linux-androideabi", "arm-linux-androideabi"],
+                    ("x86", _) => &["i686-linux-android"],
+                    _ => &[],
                 };
-                if !ndk_target.is_empty() {
-                    let cxx_path = std::path::Path::new(&ndk_home)
-                        .join("toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib")
-                        .join(ndk_target);
+                let ndk_base = std::path::Path::new(&ndk_home)
+                    .join("toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib");
+                for candidate in ndk_candidates {
+                    let cxx_path = ndk_base.join(candidate);
                     if cxx_path.exists() {
                         println!("cargo:rustc-link-search=native={}", cxx_path.display());
+                        break;
                     }
                 }
             }

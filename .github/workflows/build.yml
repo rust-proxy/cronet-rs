@@ -169,12 +169,14 @@ jobs:
         run: |
           # Export NDK bin to PATH for ar and other tools
           export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-          # Override crate-type to exclude cdylib: libcronet.a for
+          # Temporarily drop cdylib from Cargo.toml: libcronet.a for
           # x86_64/i686/arm-android was not compiled with -fPIC, so
-          # producing a cdylib (.so) fails with PIC relocation errors.
+          # cdylib (.so) linking fails with PIC relocation errors.
+          # We build only the rlib for these cross-compilation targets.
+          sed -i 's/crate-type = \["lib", "cdylib"\]/crate-type = ["lib"]/' Cargo.toml
           cargo build --target ${{ matrix.rust_target }} \
-            --features static-link \
-            --config 'lib.crate-type = ["lib"]'
+            --features static-link
+          git checkout -- Cargo.toml
 
   #############################################################################
   # macOS (Darwin) — static-link mode (.a downloaded)
