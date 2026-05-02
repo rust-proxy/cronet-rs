@@ -42,13 +42,20 @@ impl PaddingManager {
 
         if self.padding_remaining > 0 {
             let mut tmp = vec![0u8; self.padding_remaining];
-            reader.read_exact(&mut tmp)?;
+            if reader.read_exact(&mut tmp).is_err() {
+                // EOF while draining padding — no more data expected
+                self.padding_remaining = 0;
+                return Ok((0, false));
+            }
             self.padding_remaining = 0;
         }
 
         if self.read_padding < PADDING_COUNT {
             let mut header = [0u8; 3];
-            reader.read_exact(&mut header)?;
+            if reader.read_exact(&mut header).is_err() {
+                // EOF before next frame header — stream ended after padding
+                return Ok((0, false));
+            }
             let original_data_size = u16::from_be_bytes([header[0], header[1]]) as usize;
             let padding_size = header[2] as usize;
 

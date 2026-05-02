@@ -197,6 +197,23 @@ pub fn create_naive_dns_resolver(config: DnsConfig) -> DnsResolver {
     })
 }
 
+/// Parse a raw DNS query and return (transaction_id, query_name, qtype).
+///
+/// Returns `None` if the query is malformed.
+pub fn parse_dns_query(data: &[u8]) -> Option<(u16, String, u16)> {
+    dns_protocol::parse_query(data)
+}
+
+/// Build a synthetic DNS response with A/AAAA records.
+pub fn build_dns_response(
+    id: u16,
+    query_name: &str,
+    qtype: u16,
+    ips: &[std::net::IpAddr],
+) -> Vec<u8> {
+    dns_protocol::build_synthetic_response(id, query_name, qtype, ips)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
