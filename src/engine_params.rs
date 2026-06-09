@@ -14,8 +14,11 @@ use crate::sys;
 pub enum HttpCacheMode {
     Disabled = 0,
     InMemory = 1,
-    Disk = 2,
-    DiskNoHttp = 3,
+    /// On-disk cache that does not cache HTTP responses
+    /// (`Cronet_EngineParams_HTTP_CACHE_MODE_DISK_NO_HTTP`).
+    DiskNoHttp = 2,
+    /// On-disk cache (`Cronet_EngineParams_HTTP_CACHE_MODE_DISK`).
+    Disk = 3,
 }
 
 /// Configuration for a Cronet Engine. Created via [`EngineParamsBuilder`].

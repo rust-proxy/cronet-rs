@@ -105,6 +105,11 @@ mod ffi {
         pub fn bidirectional_stream_flush(stream: RawBidirectionalStream);
         pub fn bidirectional_stream_cancel(stream: RawBidirectionalStream);
         pub fn bidirectional_stream_disable_auto_flush(stream: RawBidirectionalStream, disable: bool);
+        pub fn bidirectional_stream_delay_request_headers_until_flush(
+            stream: RawBidirectionalStream,
+            delay: bool,
+        );
+        pub fn bidirectional_stream_is_done(stream: RawBidirectionalStream) -> bool;
     }
 }
 
@@ -269,4 +274,14 @@ pub unsafe fn bidirectional_stream_disable_auto_flush(
     stream: super::RawBidirectionalStream, disable: bool,
 ) {
     ffi::bidirectional_stream_disable_auto_flush(stream, disable)
+}
+
+pub unsafe fn bidirectional_stream_delay_request_headers_until_flush(
+    stream: super::RawBidirectionalStream, delay: bool,
+) {
+    ffi::bidirectional_stream_delay_request_headers_until_flush(stream, delay)
+}
+
+pub unsafe fn bidirectional_stream_is_done(stream: super::RawBidirectionalStream) -> bool {
+    ffi::bidirectional_stream_is_done(stream)
 }

@@ -14,9 +14,15 @@
 //! | `dynamic` | ✅ | Linux, Windows, Android | Load `libcronet` at runtime via dlopen/LoadLibrary |
 //! | `static-link` | ❌ | macOS, iOS, Android, Linux, Windows | Link `libcronet.a` at compile time |
 //! | `android-static` | ❌ | Android | Alias for `static-link` |
+//! | `download` | ❌ | all | Have `cronet-sys`'s build script download + SHA-256 verify a prebuilt `libcronet` for the target into `OUT_DIR` |
 //!
 //! **macOS/iOS must use `static-link`** — dlopen is not available.
 //! **Android should prefer `static-link`** for stable production builds.
+//!
+//! With `download`, the native library is fetched at build time (no manual
+//! setup). In dynamic mode, load it via
+//! [`sys::load_downloaded_library`](crate::sys::load_downloaded_library)
+//! instead of passing an explicit path; in static mode it links automatically.
 //!
 //! ```toml
 //! [dependencies]

@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // In static-link mode load_library is a no-op.
     #[cfg(feature = "dynamic")]
     unsafe {
-        cronet_rs::sys::load_library("libcronet.so.119")?;
+        cronet_rs::sys::load_library("dylibs")?;
     }
 
     // --- Create engine ---

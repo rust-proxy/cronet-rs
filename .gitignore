@@ -1,1 +1,6 @@
 /target
+
+# Local private secrets — never commit
+.env
+.env.*
+env.ps1

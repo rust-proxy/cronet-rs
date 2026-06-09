@@ -6,14 +6,43 @@ use cronet_rs::error::{CronetError, CronetResult, ErrorCode, NetError};
 
 #[test]
 fn test_cronet_result_conversion() {
+    // Values must match the Cronet_RESULT enum in cronet.idl_c.h.
     assert_eq!(CronetResult::from(0), CronetResult::Success);
+
+    // ILLEGAL_ARGUMENT family (-1xx)
     assert_eq!(CronetResult::from(-100), CronetResult::IllegalArgument);
-    assert_eq!(CronetResult::from(-101), CronetResult::IllegalState);
-    assert_eq!(CronetResult::from(-102), CronetResult::IllegalMethodCalled);
-    assert_eq!(CronetResult::from(-103), CronetResult::IllegalMethodNotCalled);
-    assert_eq!(CronetResult::from(-104), CronetResult::NullPointer);
-    assert_eq!(CronetResult::from(-105), CronetResult::BadInterface);
+    assert_eq!(
+        CronetResult::from(-101),
+        CronetResult::IllegalArgumentStoragePathMustExist
+    );
+    assert_eq!(CronetResult::from(-105), CronetResult::IllegalArgumentInvalidHttpHeader);
+
+    // ILLEGAL_STATE family (-2xx)
+    assert_eq!(CronetResult::from(-200), CronetResult::IllegalState);
+    assert_eq!(
+        CronetResult::from(-203),
+        CronetResult::IllegalStateEngineAlreadyStarted
+    );
+    assert_eq!(CronetResult::from(-210), CronetResult::IllegalStateReadFailed);
+
+    // NULL_POINTER family (-3xx)
+    assert_eq!(CronetResult::from(-300), CronetResult::NullPointer);
+    assert_eq!(CronetResult::from(-304), CronetResult::NullPointerEngine);
+    assert_eq!(CronetResult::from(-311), CronetResult::NullPointerParams);
+
+    // Unmapped values fall back to Unknown.
     assert_eq!(CronetResult::from(-999), CronetResult::Unknown);
+    assert_eq!(CronetResult::from(-106), CronetResult::Unknown);
+    assert_eq!(CronetResult::from(42), CronetResult::Unknown);
+
+    // Round-trip: every named variant's discriminant maps back to itself.
+    for v in [
+        0, -100, -101, -102, -103, -104, -105, -200, -201, -202, -203, -204, -205, -206, -207,
+        -208, -209, -210, -300, -301, -302, -303, -304, -305, -306, -307, -308, -309, -310, -311,
+        -312,
+    ] {
+        assert_eq!(CronetResult::from(v) as i32, v, "round-trip failed for {v}");
+    }
 }
 
 #[test]

@@ -1,3 +1,7 @@
+[workspace]
+members = ["cronet-sys"]
+resolver = "2"
+
 [package]
 name = "cronet-rs"
 version = "0.1.0"
@@ -14,15 +18,19 @@ log = "0.4"
 thiserror = "2"
 rand = "0.8"
 
-# Dynamic loading (purego path) — Linux/Windows/Android
-libloading = { version = "0.8", optional = true }
+# Low-level FFI bindings + native library resolution.
+cronet-sys = { version = "0.1", path = "cronet-sys", default-features = false }
+
+# Used only by examples/tests to load a local `.env` file.
+[dev-dependencies]
+dotenvy = "0.15"
 
 [features]
 default = ["dynamic"]
 
 # Dynamic mode: load libcronet at runtime via dlopen/LoadLibrary
 # Works on Linux, Windows, Android. NOT supported on macOS/iOS.
-dynamic = ["dep:libloading"]
+dynamic = ["cronet-sys/dynamic"]
 
 # Static link mode: link libcronet.a at compile time.
 #
@@ -30,14 +38,18 @@ dynamic = ["dep:libloading"]
 # Also works on Linux and Windows.
 #
 # Usage:
-#   CRONET_LIB_DIR=/path/to/libdir cargo build --features static-link
+#   CRONET_LIB_DIR=/path/to/libdir cargo build --no-default-features --features static-link
 #
 # On Android you additionally need ANDROID_NDK_HOME set (or NDK on PATH)
 # so the linker can find libc++_static.a.
-static-link = []
+static-link = ["cronet-sys/static-link"]
 
 # Convenience alias: use static-link on Android targets.
 # Same as `static-link`.
 android-static = ["static-link"]
+
+# Opt-in: have cronet-sys's build.rs download + checksum a prebuilt libcronet
+# for the target into OUT_DIR. No network at build time unless enabled.
+download = ["cronet-sys/download"]
 
 

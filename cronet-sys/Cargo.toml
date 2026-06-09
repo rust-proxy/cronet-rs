@@ -1,0 +1,35 @@
+[package]
+name = "cronet-sys"
+version = "0.1.0"
+edition = "2024"
+description = "Low-level FFI bindings to Chromium Cronet (libcronet), with optional prebuilt-binary download."
+license = "MIT"
+repository = "https://github.com/Itsusinn/cronet-rs"
+# Marks this as the single crate in the dependency graph that owns the native
+# `cronet` library. Lets downstream `-sys` consumers pass metadata via DEP_CRONET_*.
+links = "cronet"
+
+[lib]
+
+[dependencies]
+# Dynamic mode: dlopen/LoadLibrary at runtime.
+libloading = { version = "0.8", optional = true }
+
+# Build-time downloader deps — only pulled in when the `download` feature is on.
+[build-dependencies]
+ureq = { version = "2", optional = true }
+sha2 = { version = "0.10", optional = true }
+
+[features]
+default = ["dynamic"]
+
+# Load libcronet at runtime via dlopen/LoadLibrary (Linux/Windows/Android).
+dynamic = ["dep:libloading"]
+
+# Link libcronet at compile time (macOS/iOS/Android, also Linux/Windows).
+static-link = []
+
+# Opt-in: in build.rs, download the matching prebuilt libcronet for the target
+# from github.com/rust-proxy/cronet-binaries into OUT_DIR, verifying its
+# SHA-256 against a pinned checksum. Off by default — no network at build time.
+download = ["dep:ureq", "dep:sha2"]

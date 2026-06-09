@@ -20,10 +20,12 @@ use cronet_rs::engine_params::HttpCacheMode;
 
 #[test]
 fn test_http_cache_mode_discriminants() {
+    // Discriminants must match Cronet_EngineParams_HTTP_CACHE_MODE in cronet.idl_c.h:
+    //   DISABLED=0, IN_MEMORY=1, DISK_NO_HTTP=2, DISK=3.
     assert_eq!(HttpCacheMode::Disabled as i32, 0);
     assert_eq!(HttpCacheMode::InMemory as i32, 1);
-    assert_eq!(HttpCacheMode::Disk as i32, 2);
-    assert_eq!(HttpCacheMode::DiskNoHttp as i32, 3);
+    assert_eq!(HttpCacheMode::DiskNoHttp as i32, 2);
+    assert_eq!(HttpCacheMode::Disk as i32, 3);
 }
 
 #[test]
