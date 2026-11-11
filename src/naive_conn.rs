@@ -5,7 +5,7 @@
 
 use std::io::{Read, Write};
 
-use crate::bidirectional::BidirectionalConn;
+use crate::bidirectional::{BidirectionalConn, ReadHalf, StreamCancel, WriteHalf};
 use crate::error::CronetError;
 use crate::padding::PaddingManager;
 
@@ -18,6 +18,31 @@ pub struct NaiveConn {
 }
 
 impl NaiveConn {
+    /// Split an authenticated tunnel into independently progressing I/O halves.
+    /// Padding counters are directional, so each half retains its own state.
+    /// Keep the client engine alive until both halves and the cancel handle
+    /// have been dropped. Cancel the stream to wake an idle blocking reader.
+    pub fn into_split(
+        mut self,
+    ) -> std::result::Result<(NaiveReadHalf, NaiveWriteHalf, StreamCancel), CronetError> {
+        let status = self.handshake()?;
+        if status != 200 {
+            return Err(CronetError::BadStatus(status.to_string()));
+        }
+        let Self { inner, padding, .. } = self;
+        let (reader, writer, cancel) = inner.into_split();
+        Ok((
+            NaiveReadHalf {
+                inner: reader,
+                padding: padding.clone(),
+            },
+            NaiveWriteHalf {
+                inner: writer,
+                padding,
+            },
+            cancel,
+        ))
+    }
     pub fn new(inner: BidirectionalConn) -> Self {
         Self {
             inner,
@@ -70,23 +95,52 @@ impl NaiveConn {
     }
 }
 
+/// The read direction of an authenticated Naive tunnel.
+pub struct NaiveReadHalf {
+    inner: ReadHalf,
+    padding: PaddingManager,
+}
+
+/// The write direction of an authenticated Naive tunnel.
+pub struct NaiveWriteHalf {
+    inner: WriteHalf,
+    padding: PaddingManager,
+}
+
+impl Read for NaiveReadHalf {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.padding
+            .read_with_padding(&mut self.inner, buf)
+            .map(|r| r.0)
+    }
+}
+
+impl Write for NaiveWriteHalf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.padding.write_with_padding(&mut self.inner, buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 impl Read for NaiveConn {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if !self.handshake_done {
-            self.handshake().map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
+            self.handshake()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         }
-        self.padding.read_with_padding(&mut self.inner, buf).map(|r| r.0)
+        self.padding
+            .read_with_padding(&mut self.inner, buf)
+            .map(|r| r.0)
     }
 }
 
 impl Write for NaiveConn {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if !self.handshake_done {
-            self.handshake().map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
+            self.handshake()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         }
         self.padding.write_with_padding(&mut self.inner, buf)
     }
@@ -97,8 +151,4 @@ impl Write for NaiveConn {
     }
 }
 
-impl Drop for NaiveConn {
-    fn drop(&mut self) {
-        let _ = self.inner.close();
-    }
-}
+// Dropping the inner connection cancels and destroys its native stream.

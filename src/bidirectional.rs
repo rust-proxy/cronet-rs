@@ -178,7 +178,9 @@ unsafe fn cstr(p: *const c_char) -> String {
     }
 }
 
-unsafe fn headers_to_map(arr: *const sys::RawBidirectionalStreamHeaderArray) -> HashMap<String, String> {
+unsafe fn headers_to_map(
+    arr: *const sys::RawBidirectionalStreamHeaderArray,
+) -> HashMap<String, String> {
     let mut map = HashMap::new();
     if arr.is_null() {
         return map;
@@ -383,15 +385,16 @@ impl BidirectionalStream {
         priority: i32,
         end_of_stream: bool,
     ) -> std::result::Result<(), CronetError> {
-        let c_method = CString::new(method)
-            .map_err(|_| CronetError::Config("method contains null".into()))?;
+        let c_method =
+            CString::new(method).map_err(|_| CronetError::Config("method contains null".into()))?;
         let c_url =
             CString::new(url).map_err(|_| CronetError::Config("url contains null".into()))?;
 
         // Keep the CStrings alive until the call returns.
         let mut c_keys: Vec<CString> = Vec::with_capacity(headers.len());
         let mut c_vals: Vec<CString> = Vec::with_capacity(headers.len());
-        let mut c_headers: Vec<sys::RawBidirectionalStreamHeader> = Vec::with_capacity(headers.len());
+        let mut c_headers: Vec<sys::RawBidirectionalStreamHeader> =
+            Vec::with_capacity(headers.len());
         for (key, value) in headers {
             let c_key = CString::new(key.as_str())
                 .map_err(|_| CronetError::Config("header key contains null".into()))?;
@@ -463,6 +466,12 @@ impl BidirectionalStream {
     /// `on_read_completed` (or a terminal event) fires. `buf` is borrowed for the
     /// whole call, so the buffer cronet writes into stays valid.
     pub fn read(&mut self, buf: &mut [u8]) -> std::result::Result<i32, CronetError> {
+        self.read_shared(buf)
+    }
+
+    // Called by the unique read half after splitting. The independent write
+    // half may wait for its completion concurrently.
+    fn read_shared(&self, buf: &mut [u8]) -> std::result::Result<i32, CronetError> {
         {
             let g = self.shared.mutex.lock().unwrap();
             match g.terminal {
@@ -488,7 +497,6 @@ impl BidirectionalStream {
             return Err(CronetError::Net(NetError(rc)));
         }
 
-        let deadline = Instant::now() + DEFAULT_TIMEOUT;
         let mut g = self.shared.mutex.lock().unwrap();
         loop {
             if g.read_completed {
@@ -499,18 +507,23 @@ impl BidirectionalStream {
                 Some(t) => return Err(terminal_to_err(t)),
                 None => {}
             }
-            let now = Instant::now();
-            if now >= deadline {
-                return Err(CronetError::Config("timed out waiting for read".into()));
-            }
-            let (ng, _) = self.shared.cond.wait_timeout(g, deadline - now).unwrap();
-            g = ng;
+            // Idle tunnels are valid. Cancellation wakes this wait and the
+            // terminal callback guarantees Cronet no longer owns `buf`.
+            g = self.shared.cond.wait(g).unwrap();
         }
     }
 
     /// Write `buf`, blocking until `on_write_completed` (or a terminal event).
     pub fn write(
         &mut self,
+        buf: &[u8],
+        end_of_stream: bool,
+    ) -> std::result::Result<i32, CronetError> {
+        self.write_shared(buf, end_of_stream)
+    }
+
+    fn write_shared(
+        &self,
         buf: &[u8],
         end_of_stream: bool,
     ) -> std::result::Result<i32, CronetError> {
@@ -551,6 +564,15 @@ impl BidirectionalStream {
             }
             let now = Instant::now();
             if now >= deadline {
+                // Keep the borrowed buffer alive until cancellation completes.
+                // Returning on timeout alone lets Cronet retain a dangling
+                // pointer into the caller's write buffer.
+                drop(g);
+                self.cancel();
+                g = self.shared.mutex.lock().unwrap();
+                while g.terminal.is_none() && !g.write_completed {
+                    g = self.shared.cond.wait(g).unwrap();
+                }
                 return Err(CronetError::Config("timed out waiting for write".into()));
             }
             let (ng, _) = self.shared.cond.wait_timeout(g, deadline - now).unwrap();
@@ -616,6 +638,50 @@ impl Drop for BidirectionalStream {
 // Safe: all interior state is either a pointer-sized handle or behind a Mutex.
 unsafe impl Send for BidirectionalStream {}
 
+// Public I/O methods still require exclusive access. Shared I/O is only
+// exposed through one non-cloneable read half and one write half. All callback
+// state is synchronized, cancellation is thread-safe, and Arc keeps the native
+// stream alive until both operations have completed.
+unsafe impl Sync for BidirectionalStream {}
+
+/// The unique reader of a split bidirectional stream.
+pub struct ReadHalf(Arc<BidirectionalStream>);
+/// The unique writer of a split bidirectional stream.
+pub struct WriteHalf(Arc<BidirectionalStream>);
+
+/// Cancels in-flight I/O without owning either directional half.
+#[derive(Clone)]
+pub struct StreamCancel(Arc<BidirectionalStream>);
+
+impl StreamCancel {
+    pub fn cancel(&self) {
+        self.0.cancel();
+    }
+}
+
+impl Read for ReadHalf {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.read_shared(buf) {
+            Ok(n) => Ok(n as usize),
+            Err(CronetError::ConnectionClosed) => Ok(0),
+            Err(error) => Err(std::io::Error::other(error)),
+        }
+    }
+}
+
+impl Write for WriteHalf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .write_shared(buf, false)
+            .map(|n| n as usize)
+            .map_err(std::io::Error::other)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush();
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // BidirectionalConn
 // ---------------------------------------------------------------------------
@@ -629,6 +695,14 @@ pub struct BidirectionalConn {
 }
 
 impl BidirectionalConn {
+    pub(crate) fn into_split(self) -> (ReadHalf, WriteHalf, StreamCancel) {
+        let stream = Arc::new(self.stream);
+        (
+            ReadHalf(stream.clone()),
+            WriteHalf(stream.clone()),
+            StreamCancel(stream),
+        )
+    }
     pub fn new(stream_engine: &BidirectionalStreamEngine) -> Self {
         Self {
             stream: BidirectionalStream::new(stream_engine.raw, None),
@@ -645,7 +719,8 @@ impl BidirectionalConn {
         priority: i32,
         end_of_stream: bool,
     ) -> std::result::Result<(), CronetError> {
-        self.stream.start(method, url, headers, priority, end_of_stream)
+        self.stream
+            .start(method, url, headers, priority, end_of_stream)
     }
 
     /// Wait for response headers (handshake).
@@ -707,8 +782,5 @@ impl Write for BidirectionalConn {
     }
 }
 
-impl Drop for BidirectionalConn {
-    fn drop(&mut self) {
-        let _ = self.close();
-    }
-}
+// BidirectionalStream owns cancellation and destruction, including when this
+// wrapper is dropped without an explicit close().
