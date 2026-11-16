@@ -28,48 +28,53 @@ impl PaddingManager {
     }
 
     /// Read data with padding stripping.
+    /// Padding-only frames are skipped. EOF is clean only between complete
+    /// frames; truncated frames and transport errors are propagated.
     pub fn read_with_padding<R: Read>(
         &mut self,
         reader: &mut R,
         buffer: &mut [u8],
     ) -> std::io::Result<(usize, bool)> {
-        if self.read_remaining > 0 {
-            let end = self.read_remaining.min(buffer.len());
-            let n = reader.read(&mut buffer[..end])?;
-            self.read_remaining -= n;
-            return Ok((n, false));
+        if buffer.is_empty() {
+            return Ok((0, false));
         }
-
-        if self.padding_remaining > 0 {
-            let mut tmp = vec![0u8; self.padding_remaining];
-            if reader.read_exact(&mut tmp).is_err() {
-                // EOF while draining padding — no more data expected
+        let mut had_frame = false;
+        loop {
+            if self.read_remaining > 0 {
+                let end = self.read_remaining.min(buffer.len());
+                let n = reader.read(&mut buffer[..end])?;
+                if n == 0 {
+                    return Err(std::io::ErrorKind::UnexpectedEof.into());
+                }
+                self.read_remaining -= n;
+                return Ok((n, had_frame));
+            }
+            if self.padding_remaining > 0 {
+                let mut padding = [0; 255];
+                reader.read_exact(&mut padding[..self.padding_remaining])?;
                 self.padding_remaining = 0;
-                return Ok((0, false));
             }
-            self.padding_remaining = 0;
-        }
-
-        if self.read_padding < PADDING_COUNT {
+            if self.read_padding == PADDING_COUNT {
+                return reader.read(buffer).map(|n| (n, had_frame));
+            }
             let mut header = [0u8; 3];
-            if reader.read_exact(&mut header).is_err() {
-                // EOF before next frame header — stream ended after padding
-                return Ok((0, false));
+            // Only EOF at a frame boundary is a clean end of the stream.
+            loop {
+                match reader.read(&mut header[..1]) {
+                    Ok(0) => return Ok((0, had_frame)),
+                    Ok(_) => break,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                }
             }
-            let original_data_size = u16::from_be_bytes([header[0], header[1]]) as usize;
-            let padding_size = header[2] as usize;
-
-            let end = original_data_size.min(buffer.len());
-            let n = reader.read(&mut buffer[..end])?;
+            reader.read_exact(&mut header[1..])?;
+            self.read_remaining = u16::from_be_bytes([header[0], header[1]]) as usize;
+            self.padding_remaining = header[2] as usize;
             self.read_padding += 1;
-            self.read_remaining = original_data_size - n;
-            self.padding_remaining = padding_size;
-
-            return Ok((n, true));
+            had_frame = true;
+            // Empty padding frames carry no application data. Consume them
+            // and continue instead of returning Rust's EOF sentinel, Ok(0).
         }
-
-        let n = reader.read(buffer)?;
-        Ok((n, false))
     }
 
     /// Write data with padding.
@@ -107,11 +112,7 @@ impl PaddingManager {
     }
 
     /// Write large data by chunking.
-    fn write_chunked<W: Write>(
-        &mut self,
-        writer: &mut W,
-        data: &[u8],
-    ) -> std::io::Result<usize> {
+    fn write_chunked<W: Write>(&mut self, writer: &mut W, data: &[u8]) -> std::io::Result<usize> {
         let mut written = 0;
         let mut remaining = data;
 
@@ -136,15 +137,27 @@ impl PaddingManager {
     }
 
     pub fn front_headroom(&self) -> usize {
-        if self.write_padding < PADDING_COUNT { 3 } else { 0 }
+        if self.write_padding < PADDING_COUNT {
+            3
+        } else {
+            0
+        }
     }
 
     pub fn rear_headroom(&self) -> usize {
-        if self.write_padding < PADDING_COUNT { 255 } else { 0 }
+        if self.write_padding < PADDING_COUNT {
+            255
+        } else {
+            0
+        }
     }
 
     pub fn writer_mtu(&self) -> usize {
-        if self.write_padding < PADDING_COUNT { MAX_PADDING_CHUNK_SIZE } else { 0 }
+        if self.write_padding < PADDING_COUNT {
+            MAX_PADDING_CHUNK_SIZE
+        } else {
+            0
+        }
     }
 }
 

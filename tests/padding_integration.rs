@@ -6,6 +6,92 @@ use std::io::Cursor;
 
 use cronet_rs::padding::PaddingManager;
 
+#[test]
+fn padding_only_frames_do_not_end_the_stream() {
+    let mut wire = vec![0, 0, 2, 0, 0];
+    wire.extend_from_slice(&[0, 3, 0, b'e', b'n', b'd']);
+    let mut reader = std::io::Cursor::new(wire);
+    let mut padding = PaddingManager::new();
+    let mut output = [0; 16];
+    let (n, _) = padding.read_with_padding(&mut reader, &mut output).unwrap();
+    assert_eq!(&output[..n], b"end");
+}
+
+#[test]
+fn eight_empty_padding_frames_transition_to_plain_data() {
+    let mut wire = vec![0; 8 * 3];
+    wire.extend_from_slice(b"plain");
+    let mut padding = PaddingManager::new();
+    let mut output = [0; 16];
+    let (n, _) = padding
+        .read_with_padding(&mut Cursor::new(wire), &mut output)
+        .unwrap();
+    assert_eq!(&output[..n], b"plain");
+    assert!(padding.reader_replaceable());
+}
+
+#[test]
+fn truncated_frame_after_partial_read_is_not_clean_eof() {
+    // Either the declared payload or its trailing padding is incomplete.
+    for wire in [vec![0, 2, 0, b'x'], vec![0, 1, 2, b'x', 0]] {
+        let mut reader = Cursor::new(wire);
+        let mut padding = PaddingManager::new();
+        assert_eq!(
+            padding.read_with_padding(&mut reader, &mut [0]).unwrap().0,
+            1
+        );
+        let error = padding
+            .read_with_padding(&mut reader, &mut [0; 16])
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+}
+
+#[test]
+fn truncated_padding_frames_are_errors() {
+    for wire in [vec![0], vec![0, 1], vec![0, 1, 0], vec![0, 0, 2, 0]] {
+        let mut padding = PaddingManager::new();
+        let error = padding
+            .read_with_padding(&mut std::io::Cursor::new(wire), &mut [0; 16])
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+}
+
+#[test]
+fn padding_read_preserves_transport_errors() {
+    struct Reset;
+    impl std::io::Read for Reset {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::ConnectionReset.into())
+        }
+    }
+    let error = PaddingManager::new()
+        .read_with_padding(&mut Reset, &mut [0; 16])
+        .unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
+}
+
+#[test]
+fn empty_read_does_not_consume_a_padding_header() {
+    let mut reader = std::io::Cursor::new([0, 1, 0, b'x']);
+    let mut padding = PaddingManager::new();
+    assert_eq!(
+        padding.read_with_padding(&mut reader, &mut []).unwrap().0,
+        0
+    );
+    assert_eq!(reader.position(), 0);
+    let mut output = [0];
+    assert_eq!(
+        padding
+            .read_with_padding(&mut reader, &mut output)
+            .unwrap()
+            .0,
+        1
+    );
+    assert_eq!(output, [b'x']);
+}
+
 /// Write helper: creates a padded payload buffer.
 fn write_padded(data: &[u8]) -> Vec<u8> {
     let mut buf = Vec::new();
@@ -126,7 +212,10 @@ fn test_padding_headroom() {
 #[test]
 fn test_padding_mtu() {
     let mut pm = PaddingManager::new();
-    assert!(pm.writer_mtu() > 0, "before padding done, mtu should be > 0");
+    assert!(
+        pm.writer_mtu() > 0,
+        "before padding done, mtu should be > 0"
+    );
 
     let mut buf = Vec::new();
     let mut cursor = Cursor::new(&mut buf);
@@ -172,7 +261,10 @@ fn test_padding_deterministic_read_write_count() {
     pm.write_with_padding(&mut cursor, b"data").unwrap();
     // The write buffer should have 3 bytes header + 4 bytes data + random padding
     assert!(buf.len() >= 7, "buffer should have header + data");
-    assert!(buf.len() <= 3 + 4 + 255, "buffer should not exceed max frame");
+    assert!(
+        buf.len() <= 3 + 4 + 255,
+        "buffer should not exceed max frame"
+    );
 
     drop(pm);
     drop(initial);
