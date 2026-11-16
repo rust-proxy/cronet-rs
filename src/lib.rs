@@ -16,6 +16,15 @@
 //! | `android-static` | ❌ | Android | Alias for `static-link` |
 //! | `download` | ❌ | all | Have `cronet-sys`'s build script download + SHA-256 verify a prebuilt `libcronet` for the target into `OUT_DIR` |
 //!
+//! `static-link` takes precedence if Cargo also enables `dynamic`.
+//! Linux archives must match the target libc (glibc or musl); Windows static
+//! linking requires MSVC and `cronet.lib` plus its generated `link_flags.txt`.
+//! The native Windows build uses `/MT`; compile Rust with matching
+//! `RUSTFLAGS="-C target-feature=+crt-static"` and an explicit `--target`.
+//! `CRONET_LIB_DIR` bypasses downloading in static builds, even with `download`.
+//! New Linux/Windows static assets are not checksum-pinned yet: provide a local
+//! archive until a verified release is available.
+//!
 //! **macOS/iOS must use `static-link`** — dlopen is not available.
 //! **Android should prefer `static-link`** for stable production builds.
 //!

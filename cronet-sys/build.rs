@@ -21,6 +21,8 @@
 //! - `CRONET_DOWNLOAD_SHA256` — expected SHA-256 for a custom/unpinned asset.
 //! - `CRONET_DOWNLOAD_DIR`    — cache dir for downloads (default `OUT_DIR`).
 
+mod build_target;
+
 use std::env;
 use std::path::PathBuf;
 
@@ -34,6 +36,7 @@ const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releas
 /// build fails loudly — which is the intended safety property. Update this
 /// table (and re-test) when intentionally bumping to a new upstream build.
 #[cfg(feature = "download")]
+#[rustfmt::skip]
 const CHECKSUMS: &[(&str, &str)] = &[
     ("libcronet-android-386.a", "fe78e73d352a1b2bafaba474b017ebc7ecf4a892f30dea1838f9f6c2ce49e8ac"),
     ("libcronet-android-amd64.a", "4b83989eec6e2d1fe14bc5a8ae180d3e6fe98797eb232e7b83b062020dda7a3e"),
@@ -63,6 +66,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     for var in [
         "CRONET_LIB_DIR",
+        "ANDROID_NDK_HOME",
         "CRONET_STATIC_NAME",
         "CRONET_DOWNLOAD_TAG",
         "CRONET_DOWNLOAD_ASSET",
@@ -72,14 +76,23 @@ fn main() {
         println!("cargo:rerun-if-env-changed={var}");
     }
 
-    let static_link = env::var_os("CARGO_FEATURE_STATIC_LINK").is_some();
+    let static_link = env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
+        || env::var_os("CARGO_FEATURE_DYNAMIC").is_none();
 
     // 1. Optionally download (and verify) the prebuilt for this target.
-    let downloaded = maybe_download();
+    // A supplied native archive takes precedence over automatic downloads.
+    let downloaded = if static_link && env::var_os("CRONET_LIB_DIR").is_some() {
+        None
+    } else {
+        maybe_download()
+    };
 
     // Expose the on-disk path to the crate so dynamic-mode users can load it.
     if let Some(path) = &downloaded {
-        println!("cargo:rustc-env=CRONET_DOWNLOADED_LIB_PATH={}", path.display());
+        println!(
+            "cargo:rustc-env=CRONET_DOWNLOADED_LIB_PATH={}",
+            path.display()
+        );
     }
 
     // 2. Static-link wiring.
@@ -102,37 +115,15 @@ fn asset_name() -> Option<String> {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let abi = env::var("CARGO_CFG_TARGET_ABI").unwrap_or_default();
 
-    let rel_arch = match arch.as_str() {
-        "x86" => "386",
-        "x86_64" => "amd64",
-        "arm" => "arm",
-        "aarch64" => "arm64",
-        "loongarch64" => "loong64",
-        "riscv64" => "riscv64",
-        "mips64" => "mips64le",
-        "mips" => "mipsle",
-        _ => return None,
-    };
-
-    let name = match os.as_str() {
-        "linux" => format!("libcronet-linux-{rel_arch}.so"),
-        "windows" => format!("libcronet-windows-{rel_arch}.dll"),
-        "android" => format!("libcronet-android-{rel_arch}.a"),
-        "macos" => format!("libcronet-darwin-{rel_arch}.a"),
-        "ios" | "tvos" => {
-            // Simulator targets: `*-apple-ios-sim` sets target_abi=sim, and the
-            // x86_64 Apple-mobile target is always a simulator.
-            let is_sim = abi == "sim" || arch == "x86_64";
-            let slot = if is_sim {
-                format!("{rel_arch}_simulator")
-            } else {
-                rel_arch.to_string()
-            };
-            format!("libcronet-{os}-{slot}.a")
-        }
-        _ => return None,
-    };
-    Some(name)
+    build_target::asset_name(
+        &os,
+        &arch,
+        &abi,
+        &env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default(),
+        &env::var("CARGO_CFG_TARGET_ENDIAN").unwrap_or_default(),
+        env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
+            || env::var_os("CARGO_FEATURE_DYNAMIC").is_none(),
+    )
 }
 
 #[cfg(feature = "download")]
@@ -194,7 +185,10 @@ fn maybe_download() -> Option<PathBuf> {
     let url = format!("{RELEASE_BASE}/{tag}/{asset}");
     println!("cargo:warning=cronet-sys: downloading {url}");
 
-    let agent = ureq::AgentBuilder::new().redirects(10).build();
+    let agent = ureq::AgentBuilder::new()
+        .redirects(10)
+        .timeout(std::time::Duration::from_secs(120))
+        .build();
     let resp = agent
         .get(&url)
         .call()
@@ -238,25 +232,63 @@ fn configure_static_link(downloaded: Option<&std::path::Path>) {
     // Resolve the directory that holds `lib<name>.a`.
     let lib_dir: Option<PathBuf> = if let Ok(dir) = env::var("CRONET_LIB_DIR") {
         Some(PathBuf::from(dir))
-    } else if let Some(dl) = downloaded.filter(|p| p.extension().is_some_and(|e| e == "a")) {
+    } else if let Some(dl) =
+        downloaded.filter(|p| p.extension().is_some_and(|e| e == "a" || e == "lib"))
+    {
         // Stage the downloaded archive as `lib<name>.a` in OUT_DIR so the
         // linker's `-l<name>` finds it.
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let staged = out_dir.join(format!("lib{lib_name}.a"));
+        let filename = if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+            format!("{lib_name}.lib")
+        } else {
+            format!("lib{lib_name}.a")
+        };
+        let staged = out_dir.join(filename);
         std::fs::copy(dl, &staged).expect("stage downloaded static lib");
         Some(out_dir)
     } else {
         None
     };
 
-    if let Some(dir) = lib_dir {
+    if let Some(dir) = &lib_dir {
         println!("cargo:rustc-link-search=native={}", dir.display());
+        let filename = if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+            format!("{lib_name}.lib")
+        } else {
+            format!("lib{lib_name}.a")
+        };
+        println!("cargo:rerun-if-changed={}", dir.join(filename).display());
     }
     println!("cargo:rustc-link-lib=static={lib_name}");
 
     // Platform-specific runtime/system dependencies of libcronet.
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     match target_os.as_str() {
+        "linux" => {
+            // Chromium bundles its C++ runtime in the complete archive.
+            for lib in ["dl", "pthread", "rt", "m", "atomic", "resolv"] {
+                println!("cargo:rustc-link-lib={lib}");
+            }
+        }
+        "windows" => {
+            assert_eq!(
+                env::var("CARGO_CFG_TARGET_ENV").as_deref(),
+                Ok("msvc"),
+                "cronet-sys: Windows static archives require an MSVC target"
+            );
+            let flags = lib_dir
+                .as_ref()
+                .expect("set CRONET_LIB_DIR for Windows static linking")
+                .join("link_flags.txt");
+            println!("cargo:rerun-if-changed={}", flags.display());
+            let contents = std::fs::read_to_string(&flags)
+                .expect("provide the link_flags.txt generated alongside cronet.lib");
+            for lib in
+                build_target::windows_libraries(&contents).expect("invalid Windows link_flags.txt")
+            {
+                println!("cargo:rustc-link-lib={lib}");
+            }
+        }
         "macos" | "ios" | "tvos" => {
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
             println!("cargo:rustc-link-lib=framework=Security");
@@ -275,8 +307,18 @@ fn configure_static_link(downloaded: Option<&std::path::Path>) {
                     "x86" => &["i686-linux-android"],
                     _ => &[],
                 };
+                let host = env::var("HOST").unwrap_or_default();
+                let prebuilt = if host.contains("windows") {
+                    "windows-x86_64"
+                } else if host.contains("apple") {
+                    "darwin-x86_64"
+                } else {
+                    "linux-x86_64"
+                };
                 let base = std::path::Path::new(&ndk_home)
-                    .join("toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib");
+                    .join("toolchains/llvm/prebuilt")
+                    .join(prebuilt)
+                    .join("sysroot/usr/lib");
                 for c in candidates {
                     let p = base.join(c);
                     if p.exists() {

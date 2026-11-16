@@ -1,6 +1,6 @@
 //! Raw FFI bindings for the Chromium Cronet C API (`libcronet`).
 //!
-//! Two backends, selected by feature:
+//! Two backends, selected by feature (`static-link` takes precedence):
 //! - **dynamic** (default, Linux/Windows/Android): load `libcronet` at runtime
 //!   via `dlopen`/`LoadLibrary`.
 //! - **static-link** (macOS/iOS, also others): link `libcronet` at compile time.
@@ -145,13 +145,18 @@ pub fn downloaded_library_path() -> Option<&'static str> {
 
 /// Load the prebuilt library that `build.rs` downloaded (dynamic mode).
 ///
-/// Returns an error if the crate was built without the `download` feature.
+/// Returns an error in dynamic mode without `download`. In static mode this
+/// is a no-op: the library is already linked.
 ///
 /// # Safety
 /// Same contract as [`load_library`] — must be called before any other FFI
 /// function, and only once.
-#[cfg(feature = "dynamic")]
 pub unsafe fn load_downloaded_library() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(any(feature = "static-link", not(feature = "dynamic")))]
+    {
+        Ok(())
+    }
+    #[cfg(all(feature = "dynamic", not(feature = "static-link")))]
     match downloaded_library_path() {
         Some(path) => unsafe { load_library(path) },
         None => Err("cronet-sys was built without the `download` feature; \
@@ -164,14 +169,14 @@ pub unsafe fn load_downloaded_library() -> Result<(), Box<dyn std::error::Error>
 // Pull in the correct backend
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "dynamic")]
+#[cfg(all(feature = "dynamic", not(feature = "static-link")))]
 mod dynamic;
-#[cfg(feature = "dynamic")]
+#[cfg(all(feature = "dynamic", not(feature = "static-link")))]
 pub use dynamic::*;
 
-#[cfg(not(feature = "dynamic"))]
+#[cfg(any(feature = "static-link", not(feature = "dynamic")))]
 mod static_link;
-#[cfg(not(feature = "dynamic"))]
+#[cfg(any(feature = "static-link", not(feature = "dynamic")))]
 pub use static_link::*;
 
 #[cfg(all(test, feature = "download"))]
@@ -180,11 +185,24 @@ mod download_tests {
     /// and exposed a real, existing path.
     #[test]
     fn downloaded_path_points_at_a_real_file() {
+        if std::env::var_os("CRONET_LIB_DIR").is_some() && cfg!(feature = "static-link") {
+            return;
+        }
         let path = super::downloaded_library_path()
             .expect("`download` feature should set CRONET_DOWNLOADED_LIB_PATH");
         assert!(
             std::path::Path::new(path).exists(),
             "downloaded library should exist on disk: {path}"
         );
+    }
+}
+
+#[cfg(all(test, feature = "static-link"))]
+mod static_tests {
+    #[test]
+    fn static_backend_does_not_load_a_runtime_library() {
+        // Also runs with all features to catch Cargo's additive feature union.
+        assert!(unsafe { super::load_library("/nonexistent/cronet-library") }.is_ok());
+        assert!(unsafe { super::load_downloaded_library() }.is_ok());
     }
 }
