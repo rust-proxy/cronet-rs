@@ -109,7 +109,6 @@ mod ffi {
             stream: RawBidirectionalStream,
             delay: bool,
         );
-        pub fn bidirectional_stream_is_done(stream: RawBidirectionalStream) -> bool;
     }
 }
 
@@ -280,8 +279,4 @@ pub unsafe fn bidirectional_stream_delay_request_headers_until_flush(
     stream: super::RawBidirectionalStream, delay: bool,
 ) {
     ffi::bidirectional_stream_delay_request_headers_until_flush(stream, delay)
-}
-
-pub unsafe fn bidirectional_stream_is_done(stream: super::RawBidirectionalStream) -> bool {
-    ffi::bidirectional_stream_is_done(stream)
 }

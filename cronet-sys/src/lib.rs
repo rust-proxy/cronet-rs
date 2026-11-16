@@ -20,6 +20,10 @@
 //!   Then load it via [`load_downloaded_library`] (dynamic) — the path is also
 //!   available via [`downloaded_library_path`].
 
+// The upstream header declares bidirectional_stream_is_done, but the native
+// library does not implement it. Observe the terminal callbacks instead; binding
+// the missing symbol prevents Windows static consumers from linking.
+
 #![allow(clippy::missing_safety_doc)]
 
 // ---------------------------------------------------------------------------

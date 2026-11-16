@@ -378,9 +378,6 @@ pub unsafe fn bidirectional_stream_delay_request_headers_until_flush(
     ffi_call!(b"bidirectional_stream_delay_request_headers_until_flush", unsafe extern "C" fn(super::RawBidirectionalStream, bool), stream, delay)
 }
 
-pub unsafe fn bidirectional_stream_is_done(stream: super::RawBidirectionalStream) -> bool {
-    ffi_call!(b"bidirectional_stream_is_done", unsafe extern "C" fn(super::RawBidirectionalStream) -> bool, stream)
-}
 
 #[cfg(test)]
 mod tests {
