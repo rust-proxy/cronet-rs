@@ -3,6 +3,36 @@ pub fn download_enabled(legacy_download: bool, download_static: bool, static_lin
     legacy_download || (download_static && static_link)
 }
 
+/// Match static Windows archives to the application's CRT, independently of
+/// whether Cronet itself is linked statically or loaded dynamically.
+#[allow(dead_code)]
+pub fn select_crt_asset(asset: String, target_features: &str) -> String {
+    if asset.starts_with("libcronet-windows-")
+        && !target_features
+            .split(',')
+            .any(|feature| feature == "crt-static")
+        && let Some(stem) = asset.strip_suffix(".lib")
+    {
+        return format!("{stem}_md.lib");
+    }
+    asset
+}
+
+pub fn validate_windows_crt(libraries: &[String], crt_static: bool) -> Result<(), String> {
+    let incompatible = if crt_static { "msvcprt" } else { "libcpmt" };
+    if libraries
+        .iter()
+        .any(|library| library.eq_ignore_ascii_case(incompatible))
+    {
+        return Err(if crt_static {
+            "the /MD Cronet archive requires Rust's default dynamic CRT; remove +crt-static or provide the /MT archive"
+        } else {
+            "the /MT Cronet archive requires +crt-static; use the /MD archive for Rust's default CRT"
+        }.into());
+    }
+    Ok(())
+}
+
 // Shared with standalone build-script tests (rustc --test).
 #[allow(dead_code)]
 pub fn asset_name(
@@ -82,6 +112,32 @@ pub fn windows_libraries(contents: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_archive_follows_target_crt_without_changing_other_assets() {
+        for arch in ["amd64", "arm64"] {
+            let archive = format!("libcronet-windows-{arch}.lib");
+            assert_eq!(
+                select_crt_asset(archive.clone(), "sse2"),
+                format!("libcronet-windows-{arch}_md.lib")
+            );
+            assert_eq!(
+                select_crt_asset(archive.clone(), "sse2,crt-static"),
+                archive
+            );
+        }
+        for asset in [
+            "libcronet-windows-amd64.dll",
+            "libcronet-linux-amd64.a",
+            "libcronet-linux-amd64_musl.a",
+        ] {
+            assert_eq!(select_crt_asset(asset.into(), ""), asset);
+        }
+        assert!(validate_windows_crt(&["libcpmt".into()], false).is_err());
+        assert!(validate_windows_crt(&["msvcprt".into()], true).is_err());
+        assert!(validate_windows_crt(&["msvcprt".into()], false).is_ok());
+        assert!(validate_windows_crt(&["libcpmt".into()], true).is_ok());
+    }
 
     #[test]
     fn musl_uses_libc_without_separate_posix_libraries() {

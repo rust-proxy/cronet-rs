@@ -17,7 +17,7 @@
 //!
 //! - `CRONET_LIB_DIR`         — dir containing `libcronet.a` (static mode).
 //! - `CRONET_STATIC_NAME`     — static lib stem (default `cronet`).
-//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `static-20261116`).
+//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `static-20261116.1`).
 //! - `CRONET_DOWNLOAD_ASSET`  — override the auto-detected asset file name.
 //! - `CRONET_DOWNLOAD_SHA256` — expected SHA-256 for a custom/unpinned asset.
 //! - `CRONET_DOWNLOAD_LINK_FLAGS_SHA256` — expected SHA-256 for Windows link flags.
@@ -32,7 +32,7 @@ use std::path::PathBuf;
 #[cfg(any(feature = "download", feature = "download-static"))]
 const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releases/download";
 
-/// Pinned SHA-256 checksums for the fixed `static-20261116` release.
+/// Pinned SHA-256 checksums for the fixed `static-20261116.1` release.
 /// Update the release tag and this table together when adopting a new build.
 #[cfg(any(feature = "download", feature = "download-static"))]
 #[rustfmt::skip]
@@ -87,11 +87,17 @@ const CHECKSUMS: &[(&str, &str)] = &[
     ("libcronet-tvos-arm64.a", "79ee7beb3c11ffa44f9d9eb445947263feae5b1ebf99090bd0d6779500c107ee"),
     ("libcronet-tvos-arm64_simulator.a", "a911824e12eecf7d514b7b697e7f3bdcc9390ff05131b9bff9fd79191ef1e076"),
     ("libcronet-windows-amd64.dll", "9b42707fe83c8d58665e120f8f94f8bc16dadf2bd3b5a5bb228719f074181161"),
-    ("libcronet-windows-amd64.lib", "b49e77138ba174699ee111a2b9f739dec8ca94bea84d95c870627b563c3fa72f"),
+    ("libcronet-windows-amd64.lib", "4e1d00228c71976fa2b74fea402712de16aaf7af52bb6511c389c7e4c8fb9db1"),
     ("libcronet-windows-amd64.link-flags.txt", "5d75a21440c384731856c6226936f931c5dc47d26e94df5c907e77531ea383eb"),
+    ("libcronet-windows-amd64_md.dll", "09542ec60e059443a5236704b768ca962cadb4506782468be226b058906fb67d"),
+    ("libcronet-windows-amd64_md.lib", "53196dba93d3f7309f9dd1a09053a10d04909c25b9349e7209f33850fa50e455"),
+    ("libcronet-windows-amd64_md.link-flags.txt", "8c1d69cc91de13a5f7e737bedeaee89f6dbcdd918001a35aea48d3bb253edb5c"),
     ("libcronet-windows-arm64.dll", "52a6e102dd3c6fd76c598ae26984f2f7b7c49c0d22eeee46e981bfdd66f64fbf"),
-    ("libcronet-windows-arm64.lib", "7bf3da8f7a96d393b67d81fdcf05cda70dc282c908d9b4e43d95b583bb7b5260"),
+    ("libcronet-windows-arm64.lib", "0d1c1e216a83ab83bb87cc4c11c5c73f10a7d90da6a1d86adad235d633f79a46"),
     ("libcronet-windows-arm64.link-flags.txt", "5d75a21440c384731856c6226936f931c5dc47d26e94df5c907e77531ea383eb"),
+    ("libcronet-windows-arm64_md.dll", "53ff4b83e37f7233bd6ab101ac4c391ee9475d210e19dd66a311a6a2c54655bc"),
+    ("libcronet-windows-arm64_md.lib", "8925d2055ce0f7d28aa4b47f326cd79ebbc8580427434e1c8336d2f3e813a0eb"),
+    ("libcronet-windows-arm64_md.link-flags.txt", "8c1d69cc91de13a5f7e737bedeaee89f6dbcdd918001a35aea48d3bb253edb5c"),
 ]; // keep sorted by name
 
 fn main() {
@@ -99,6 +105,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build_target.rs");
     for var in [
         "CRONET_LIB_DIR",
+        "CARGO_CFG_TARGET_FEATURE",
         "ANDROID_NDK_HOME",
         "CRONET_STATIC_NAME",
         "CRONET_DOWNLOAD_TAG",
@@ -169,6 +176,12 @@ fn asset_name() -> Option<String> {
         env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
             || env::var_os("CARGO_FEATURE_DYNAMIC").is_none(),
     )
+    .map(|asset| {
+        build_target::select_crt_asset(
+            asset,
+            &env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default(),
+        )
+    })
 }
 
 #[cfg(any(feature = "download", feature = "download-static"))]
@@ -217,7 +230,7 @@ fn maybe_download() -> Option<PathBuf> {
 fn download_asset(asset: &str, checksum_env: &str) -> PathBuf {
     use std::io::Read;
 
-    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "static-20261116".to_string());
+    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "static-20261116.1".to_string());
 
     // Determine the expected checksum: pinned table first, env override second.
     let expected = expected_sha(asset)
@@ -349,9 +362,15 @@ fn configure_static_link(downloaded: Option<&std::path::Path>) {
             println!("cargo:rerun-if-changed={}", flags.display());
             let contents = std::fs::read_to_string(&flags)
                 .expect("provide the link_flags.txt generated alongside cronet.lib");
-            for lib in
-                build_target::windows_libraries(&contents).expect("invalid Windows link_flags.txt")
-            {
+            let libraries =
+                build_target::windows_libraries(&contents).expect("invalid Windows link_flags.txt");
+            let crt_static = env::var("CARGO_CFG_TARGET_FEATURE")
+                .unwrap_or_default()
+                .split(',')
+                .any(|feature| feature == "crt-static");
+            build_target::validate_windows_crt(&libraries, crt_static)
+                .expect("Cronet and Rust must use matching Windows CRTs");
+            for lib in libraries {
                 println!("cargo:rustc-link-lib={lib}");
             }
         }

@@ -27,9 +27,19 @@ jobs:
             test: false
           - os: windows-2022
             target: x86_64-pc-windows-msvc
+            crt: dynamic
             test: true
           - os: windows-2022
             target: aarch64-pc-windows-msvc
+            crt: dynamic
+            test: false
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            crt: static
+            test: true
+          - os: windows-2022
+            target: aarch64-pc-windows-msvc
+            crt: static
             test: false
     runs-on: ${{ matrix.os }}
     defaults:
@@ -44,7 +54,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Match the Windows archive CRT
-        if: runner.os == 'Windows'
+        if: matrix.crt == 'static'
         run: echo 'RUSTFLAGS=-C target-feature=+crt-static' >> "$GITHUB_ENV"
       - name: Check independent download feature stays offline
         env:
@@ -52,6 +62,9 @@ jobs:
         run: cargo check -p cronet-sys --locked --target ${{ matrix.target }} --features download-static
       - name: Download, verify and link static archive
         run: cargo build --workspace --locked --target ${{ matrix.target }} --features static-link,download-static
+      - name: Build with the default Windows target and CRT
+        if: matrix.target == 'x86_64-pc-windows-msvc' && matrix.crt == 'dynamic'
+        run: cargo build --workspace --locked --features static-link,download-static
       - name: Test native engine and build helpers
         if: matrix.test
         run: |

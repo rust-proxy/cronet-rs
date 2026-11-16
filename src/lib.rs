@@ -20,12 +20,14 @@
 //! `static-link` takes precedence if Cargo also enables `dynamic`.
 //! Linux archives must match the target libc (glibc or musl); Windows static
 //! linking requires MSVC and `cronet.lib` plus its generated `link_flags.txt`.
-//! The native Windows build uses `/MT`; compile Rust with matching
-//! `RUSTFLAGS="-C target-feature=+crt-static"` and an explicit `--target`.
+//! Windows downloads select `/MD` for Rust's default CRT without extra flags,
+//! or `/MT` when `+crt-static` is enabled. Manually supplied archives must match
+//! the application's CRT. Both variants statically link Cronet; `/MD` uses the
+//! MSVC runtime DLLs.
 //! `CRONET_LIB_DIR` bypasses downloading in static builds, including with `download-static`.
 //! `download-static` alone keeps dynamic loading and never downloads. The legacy
 //! `download` feature retains its download behavior for either backend.
-//! Downloads use the fixed `static-20261116` release with pinned SHA-256
+//! Downloads use the fixed `static-20261116.1` release with pinned SHA-256
 //! checksums. Cronet's private BoringSSL symbols are isolated from other TLS libraries.
 //!
 //! **macOS/iOS must use `static-link`** — dlopen is not available.
