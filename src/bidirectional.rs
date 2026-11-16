@@ -540,15 +540,22 @@ impl BidirectionalStream {
         }
 
         let len = buf.len() as i32;
-        let rc = unsafe {
-            if buf.is_empty() {
-                sys::bidirectional_stream_write(self.raw, std::ptr::null(), 0, end_of_stream)
-            } else {
-                sys::bidirectional_stream_write(self.raw, buf.as_ptr(), len, end_of_stream)
-            }
+        // Cronet rejects a null buffer even for a zero-length END_STREAM.
+        // Use static storage so the pointer also remains valid until callback.
+        static EMPTY_WRITE: [u8; 1] = [0];
+        let data = if buf.is_empty() {
+            EMPTY_WRITE.as_ptr()
+        } else {
+            buf.as_ptr()
         };
+        let rc = unsafe { sys::bidirectional_stream_write(self.raw, data, len, end_of_stream) };
         if rc < 0 {
             return Err(CronetError::Net(NetError(rc)));
+        }
+        if rc == 0 {
+            // The C API returns false for a rejected write and does not issue
+            // a completion callback. Waiting here would hang until timeout.
+            return Err(CronetError::Config("native stream rejected write".into()));
         }
 
         let deadline = Instant::now() + DEFAULT_TIMEOUT;
@@ -647,7 +654,24 @@ unsafe impl Sync for BidirectionalStream {}
 /// The unique reader of a split bidirectional stream.
 pub struct ReadHalf(Arc<BidirectionalStream>);
 /// The unique writer of a split bidirectional stream.
-pub struct WriteHalf(Arc<BidirectionalStream>);
+pub struct WriteHalf {
+    stream: Arc<BidirectionalStream>,
+    shutdown: bool,
+}
+
+impl WriteHalf {
+    /// Send END_STREAM after all preceding writes, preserving the read half.
+    /// Repeated successful shutdowns are harmless; later writes fail.
+    pub fn shutdown(&mut self) -> std::io::Result<()> {
+        if !self.shutdown {
+            self.stream
+                .write_shared(&[], true)
+                .map_err(std::io::Error::other)?;
+            self.shutdown = true;
+        }
+        Ok(())
+    }
+}
 
 /// Cancels in-flight I/O without owning either directional half.
 #[derive(Clone)]
@@ -671,13 +695,24 @@ impl Read for ReadHalf {
 
 impl Write for WriteHalf {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
+        if self.shutdown {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "write half is shut down",
+            ));
+        }
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        self.stream
             .write_shared(buf, false)
             .map(|n| n as usize)
             .map_err(std::io::Error::other)
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.0.flush();
+        if !self.shutdown {
+            self.stream.flush();
+        }
         Ok(())
     }
 }
@@ -699,7 +734,10 @@ impl BidirectionalConn {
         let stream = Arc::new(self.stream);
         (
             ReadHalf(stream.clone()),
-            WriteHalf(stream.clone()),
+            WriteHalf {
+                stream: stream.clone(),
+                shutdown: false,
+            },
             StreamCancel(stream),
         )
     }

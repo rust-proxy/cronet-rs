@@ -107,6 +107,15 @@ pub struct NaiveWriteHalf {
     padding: PaddingManager,
 }
 
+impl NaiveWriteHalf {
+    /// Finish the request direction without canceling the response direction.
+    /// Padding writes complete synchronously, so END_STREAM follows the last
+    /// complete padding frame and must not itself be encoded as padding.
+    pub fn shutdown(&mut self) -> std::io::Result<()> {
+        self.inner.shutdown()
+    }
+}
+
 impl Read for NaiveReadHalf {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.padding
