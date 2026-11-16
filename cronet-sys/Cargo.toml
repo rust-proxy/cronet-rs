@@ -17,7 +17,7 @@ libloading = { version = "0.8", optional = true }
 
 # Build-time downloader deps — only pulled in when the `download` feature is on.
 [build-dependencies]
-ureq = { version = "2", optional = true }
+ureq = { version = "2", optional = true, features = ["socks-proxy"] }
 sha2 = { version = "0.10", optional = true }
 
 [features]
@@ -33,3 +33,6 @@ static-link = []
 # from github.com/rust-proxy/cronet-binaries into OUT_DIR, verifying its
 # SHA-256 against a pinned checksum. Off by default — no network at build time.
 download = ["dep:ureq", "dep:sha2"]
+
+# Download only when static-link is also explicitly enabled.
+download-static = ["dep:ureq", "dep:sha2"]

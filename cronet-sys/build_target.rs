@@ -1,3 +1,8 @@
+/// The static downloader is deliberately independent of backend selection.
+pub fn download_enabled(legacy_download: bool, download_static: bool, static_link: bool) -> bool {
+    legacy_download || (download_static && static_link)
+}
+
 // Shared with standalone build-script tests (rustc --test).
 #[allow(dead_code)]
 pub fn asset_name(
@@ -66,6 +71,20 @@ pub fn windows_libraries(contents: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn static_download_requires_both_features() {
+        assert!(!download_enabled(false, false, false));
+        assert!(!download_enabled(false, true, false));
+        assert!(!download_enabled(false, false, true));
+        assert!(download_enabled(false, true, true));
+        // Existing download consumers keep their original behavior.
+        for static_link in [false, true] {
+            for download_static in [false, true] {
+                assert!(download_enabled(true, download_static, static_link));
+            }
+        }
+    }
 
     #[test]
     fn linux_linkage_and_libc_have_distinct_assets() {

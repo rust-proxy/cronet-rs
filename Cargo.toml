@@ -53,3 +53,6 @@ android-static = ["static-link"]
 download = ["cronet-sys/download"]
 
 
+
+# Inert with dynamic alone; does not implicitly enable static-link.
+download-static = ["cronet-sys/download-static"]

@@ -14,7 +14,8 @@
 //! - point `CRONET_LIB_DIR` at a directory containing it (static mode), or
 //! - place a loadable `libcronet.{so,dll}` on the system search path (dynamic
 //!   mode), or
-//! - enable the **`download`** feature to have `build.rs` fetch and checksum a
+//! - enable **`static-link,download-static`** for automatic static downloads, or
+//!   the legacy **`download`** feature for either backend, to fetch and checksum a
 //!   prebuilt from <https://github.com/rust-proxy/cronet-binaries> into `OUT_DIR`.
 //!   Then load it via [`load_downloaded_library`] (dynamic) — the path is also
 //!   available via [`downloaded_library_path`].
@@ -179,7 +180,10 @@ mod static_link;
 #[cfg(any(feature = "static-link", not(feature = "dynamic")))]
 pub use static_link::*;
 
-#[cfg(all(test, feature = "download"))]
+#[cfg(all(
+    test,
+    any(feature = "download", all(feature = "download-static", feature = "static-link"))
+))]
 mod download_tests {
     /// With the `download` feature on, build.rs must have fetched a prebuilt
     /// and exposed a real, existing path.

@@ -4,7 +4,8 @@
 //!   1. (`download` feature) Fetch the matching prebuilt `libcronet` for the
 //!      target from github.com/rust-proxy/cronet-binaries into `OUT_DIR`, with
 //!      mandatory SHA-256 verification against a pinned checksum. No network is
-//!      touched unless this feature is enabled.
+//!      touched unless `download`, or both `download-static` and `static-link`,
+//!      are enabled.
 //!   2. (`static-link` feature) Emit `cargo:rustc-link-*` directives so the
 //!      linker finds `libcronet.a` — either from `CRONET_LIB_DIR` or from the
 //!      file just downloaded.
@@ -19,6 +20,7 @@
 //! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `latest`).
 //! - `CRONET_DOWNLOAD_ASSET`  — override the auto-detected asset file name.
 //! - `CRONET_DOWNLOAD_SHA256` — expected SHA-256 for a custom/unpinned asset.
+//! - `CRONET_DOWNLOAD_LINK_FLAGS_SHA256` — expected SHA-256 for Windows link flags.
 //! - `CRONET_DOWNLOAD_DIR`    — cache dir for downloads (default `OUT_DIR`).
 
 mod build_target;
@@ -27,7 +29,7 @@ use std::env;
 use std::path::PathBuf;
 
 /// Base URL for release downloads.
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releases/download";
 
 /// Pinned SHA-256 checksums for the `latest` release assets.
@@ -35,7 +37,7 @@ const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releas
 /// If upstream re-rolls the rolling `latest` tag, these stop matching and the
 /// build fails loudly — which is the intended safety property. Update this
 /// table (and re-test) when intentionally bumping to a new upstream build.
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 #[rustfmt::skip]
 const CHECKSUMS: &[(&str, &str)] = &[
     ("libcronet-android-386.a", "fe78e73d352a1b2bafaba474b017ebc7ecf4a892f30dea1838f9f6c2ce49e8ac"),
@@ -64,6 +66,7 @@ const CHECKSUMS: &[(&str, &str)] = &[
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=build_target.rs");
     for var in [
         "CRONET_LIB_DIR",
         "ANDROID_NDK_HOME",
@@ -71,7 +74,14 @@ fn main() {
         "CRONET_DOWNLOAD_TAG",
         "CRONET_DOWNLOAD_ASSET",
         "CRONET_DOWNLOAD_SHA256",
+        "CRONET_DOWNLOAD_LINK_FLAGS_SHA256",
         "CRONET_DOWNLOAD_DIR",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "ALL_PROXY",
+        "https_proxy",
+        "http_proxy",
+        "all_proxy",
     ] {
         println!("cargo:rerun-if-env-changed={var}");
     }
@@ -81,10 +91,15 @@ fn main() {
 
     // 1. Optionally download (and verify) the prebuilt for this target.
     // A supplied native archive takes precedence over automatic downloads.
-    let downloaded = if static_link && env::var_os("CRONET_LIB_DIR").is_some() {
-        None
-    } else {
+    let downloaded = if build_target::download_enabled(
+        cfg!(feature = "download"),
+        cfg!(feature = "download-static"),
+        cfg!(feature = "static-link"),
+    ) && !(static_link && env::var_os("CRONET_LIB_DIR").is_some())
+    {
         maybe_download()
+    } else {
+        None
     };
 
     // Expose the on-disk path to the crate so dynamic-mode users can load it.
@@ -105,7 +120,7 @@ fn main() {
 ///
 /// Returns `None` for targets we don't have a mapping for — callers should then
 /// require `CRONET_DOWNLOAD_ASSET` to be set explicitly.
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 fn asset_name() -> Option<String> {
     if let Ok(explicit) = env::var("CRONET_DOWNLOAD_ASSET") {
         return Some(explicit);
@@ -126,7 +141,7 @@ fn asset_name() -> Option<String> {
     )
 }
 
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 fn expected_sha(asset: &str) -> Option<&'static str> {
     CHECKSUMS
         .iter()
@@ -134,15 +149,13 @@ fn expected_sha(asset: &str) -> Option<&'static str> {
         .map(|(_, sha)| *sha)
 }
 
-#[cfg(not(feature = "download"))]
+#[cfg(not(any(feature = "download", feature = "download-static")))]
 fn maybe_download() -> Option<PathBuf> {
     None
 }
 
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 fn maybe_download() -> Option<PathBuf> {
-    use std::io::Read;
-
     let asset = asset_name().unwrap_or_else(|| {
         panic!(
             "cronet-sys: cannot determine prebuilt asset for target os={:?} arch={:?}; \
@@ -152,16 +165,38 @@ fn maybe_download() -> Option<PathBuf> {
         )
     });
 
+    let archive = download_asset(&asset, "CRONET_DOWNLOAD_SHA256");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && (env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
+            || env::var_os("CARGO_FEATURE_DYNAMIC").is_none())
+    {
+        let flags_asset = format!(
+            "{}.link-flags.txt",
+            asset
+                .strip_suffix(".lib")
+                .expect("Windows static downloads must use a .lib archive")
+        );
+        let flags = download_asset(&flags_asset, "CRONET_DOWNLOAD_LINK_FLAGS_SHA256");
+        let staged = PathBuf::from(env::var("OUT_DIR").unwrap()).join("link_flags.txt");
+        std::fs::copy(flags, staged).expect("stage verified Windows system link flags");
+    }
+    Some(archive)
+}
+
+#[cfg(any(feature = "download", feature = "download-static"))]
+fn download_asset(asset: &str, checksum_env: &str) -> PathBuf {
+    use std::io::Read;
+
     let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "latest".to_string());
 
     // Determine the expected checksum: pinned table first, env override second.
-    let expected = expected_sha(&asset)
+    let expected = expected_sha(asset)
         .map(str::to_string)
-        .or_else(|| env::var("CRONET_DOWNLOAD_SHA256").ok())
+        .or_else(|| env::var(checksum_env).ok())
         .unwrap_or_else(|| {
             panic!(
                 "cronet-sys: no pinned SHA-256 for asset {asset:?} and \
-                 CRONET_DOWNLOAD_SHA256 is unset; refusing to use an unverified binary"
+                 {checksum_env} is unset; refusing to use an unverified binary"
             )
         });
 
@@ -169,23 +204,22 @@ fn maybe_download() -> Option<PathBuf> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(env::var("OUT_DIR").unwrap()));
     std::fs::create_dir_all(&cache_dir).expect("create download cache dir");
-    let dest = cache_dir.join(&asset);
+    let dest = cache_dir.join(asset);
 
     // Reuse a previously-downloaded, still-valid copy.
-    if dest.exists() {
-        if let Ok(bytes) = std::fs::read(&dest) {
-            if sha256_hex(&bytes) == expected {
-                println!("cargo:warning=cronet-sys: using cached {asset}");
-                return Some(dest);
-            }
-        }
-        // stale/corrupt — fall through and re-download
+    if let Ok(bytes) = std::fs::read(&dest)
+        && sha256_hex(&bytes) == expected
+    {
+        println!("cargo:warning=cronet-sys: using cached {asset}");
+        return dest;
     }
+    // Missing, stale or corrupt cache entries must be downloaded and verified.
 
     let url = format!("{RELEASE_BASE}/{tag}/{asset}");
     println!("cargo:warning=cronet-sys: downloading {url}");
 
     let agent = ureq::AgentBuilder::new()
+        .try_proxy_from_env(true)
         .redirects(10)
         .timeout(std::time::Duration::from_secs(120))
         .build();
@@ -210,10 +244,10 @@ fn maybe_download() -> Option<PathBuf> {
     let tmp = dest.with_extension("download.tmp");
     std::fs::write(&tmp, &bytes).expect("write downloaded binary");
     std::fs::rename(&tmp, &dest).expect("finalize downloaded binary");
-    Some(dest)
+    dest
 }
 
-#[cfg(feature = "download")]
+#[cfg(any(feature = "download", feature = "download-static"))]
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(bytes);
