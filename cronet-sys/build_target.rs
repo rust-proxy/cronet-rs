@@ -45,6 +45,17 @@ pub fn asset_name(
     Some(format!("libcronet-{platform}-{arch}{suffix}.{extension}"))
 }
 
+// musl implements the POSIX libraries in libc. Rust's self-contained musl
+// sysroot has libc.a but no separate (empty) libdl.a/libpthread.a/etc.
+pub fn linux_libraries(env: &str) -> &'static [&'static str] {
+    // The complete archives already contain their required atomic helpers.
+    if env == "musl" {
+        &[]
+    } else {
+        &["dl", "pthread", "rt", "m", "resolv"]
+    }
+}
+
 pub fn windows_libraries(contents: &str) -> Result<Vec<String>, String> {
     let mut result = Vec::new();
     for line in contents
@@ -71,6 +82,15 @@ pub fn windows_libraries(contents: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn musl_uses_libc_without_separate_posix_libraries() {
+        assert!(linux_libraries("musl").is_empty());
+        assert_eq!(
+            linux_libraries("gnu"),
+            ["dl", "pthread", "rt", "m", "resolv"]
+        );
+    }
 
     #[test]
     fn static_download_requires_both_features() {

@@ -25,8 +25,8 @@
 //! `CRONET_LIB_DIR` bypasses downloading in static builds, including with `download-static`.
 //! `download-static` alone keeps dynamic loading and never downloads. The legacy
 //! `download` feature retains its download behavior for either backend.
-//! New Linux/Windows static assets are not checksum-pinned yet: provide a local
-//! archive until a verified release is available.
+//! Downloads use the fixed `static-20261116` release with pinned SHA-256
+//! checksums. Cronet's private BoringSSL symbols are isolated from other TLS libraries.
 //!
 //! **macOS/iOS must use `static-link`** — dlopen is not available.
 //! **Android should prefer `static-link`** for stable production builds.
