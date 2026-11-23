@@ -59,7 +59,9 @@ jobs:
       - name: Check independent download feature stays offline
         env:
           CRONET_DOWNLOAD_ASSET: intentionally-nonexistent-asset
-        run: cargo check -p cronet-sys --locked --target ${{ matrix.target }} --features download-static
+        run: |
+          cargo check -p cronet-sys --locked --target ${{ matrix.target }} --features download-static
+          cargo check -p cronet-sys --locked --target ${{ matrix.target }} --features dynamic,static-link,download-static
       - name: Download, verify and link static archive
         run: cargo build --workspace --locked --target ${{ matrix.target }} --features static-link,download-static
       - name: Build with the default Windows target and CRT

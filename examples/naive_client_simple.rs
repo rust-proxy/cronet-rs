@@ -33,7 +33,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Load the Cronet shared library (no-op in static-link mode)
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("dylibs")?;
     }

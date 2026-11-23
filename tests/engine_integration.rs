@@ -42,7 +42,6 @@ fn test_dialer_type_is_send() {
 #[test]
 #[ignore = "requires libcronet shared library; set CRONET_LIB_DIR or LD_LIBRARY_PATH"]
 fn test_builder_default() {
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -53,7 +52,6 @@ fn test_builder_default() {
 #[test]
 #[ignore = "requires libcronet shared library"]
 fn test_builder_with_quic() {
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -69,7 +67,6 @@ fn test_builder_with_quic() {
 #[ignore = "requires libcronet shared library"]
 fn test_builder_with_all_options() {
     use cronet_rs::engine_params::{EngineParamsBuilder, HttpCacheMode};
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -90,7 +87,6 @@ fn test_builder_with_all_options() {
 #[ignore = "requires libcronet shared library"]
 fn test_builder_cache_disk() {
     use cronet_rs::engine_params::{EngineParamsBuilder, HttpCacheMode};
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -107,7 +103,6 @@ fn test_builder_cache_disk() {
 #[ignore = "requires libcronet shared library"]
 fn test_builder_custom_user_agent() {
     use cronet_rs::engine_params::EngineParamsBuilder;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -122,7 +117,6 @@ fn test_builder_custom_user_agent() {
 #[ignore = "requires libcronet shared library"]
 fn test_engine_params_drop_safety() {
     use cronet_rs::engine_params::EngineParamsBuilder;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -134,7 +128,6 @@ fn test_engine_params_drop_safety() {
 #[ignore = "requires libcronet shared library"]
 fn test_engine_params_double_destroy() {
     use cronet_rs::engine_params::EngineParamsBuilder;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -148,7 +141,6 @@ fn test_engine_params_double_destroy() {
 fn test_engine_lifecycle_dynamic() {
     use cronet_rs::engine_params::EngineParamsBuilder;
     use cronet_rs::Engine;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -172,7 +164,6 @@ fn test_engine_lifecycle_dynamic() {
 #[ignore = "requires libcronet shared library"]
 fn test_engine_version_string() {
     use cronet_rs::Engine;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -185,7 +176,6 @@ fn test_engine_version_string() {
 #[ignore = "requires libcronet shared library"]
 fn test_engine_default_user_agent() {
     use cronet_rs::Engine;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
@@ -199,7 +189,6 @@ fn test_engine_default_user_agent() {
 #[ignore = "requires libcronet shared library"]
 fn test_set_dialer_disable() {
     use cronet_rs::Engine;
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }

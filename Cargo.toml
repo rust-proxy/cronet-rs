@@ -26,7 +26,7 @@ cronet-sys = { version = "0.1", path = "cronet-sys", default-features = false }
 dotenvy = "0.15"
 
 [features]
-default = ["dynamic"]
+default = []
 
 # Dynamic mode: load libcronet at runtime via dlopen/LoadLibrary
 # Works on Linux, Windows, Android. NOT supported on macOS/iOS.
@@ -54,5 +54,5 @@ download = ["cronet-sys/download"]
 
 
 
-# Inert with dynamic alone; does not implicitly enable static-link.
+# Only downloads when the selected backend is static.
 download-static = ["cronet-sys/download-static"]

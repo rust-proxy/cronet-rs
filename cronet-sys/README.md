@@ -11,13 +11,15 @@ The vendored C headers (the ABI source of truth) live in [`include/`](include/).
 
 | Feature | Default | What it does |
 |---|---|---|
-| `dynamic` | ✅ | Resolve symbols at runtime via `dlopen`/`LoadLibrary` (`libloading`). |
+| `dynamic` | ❌ | Resolve symbols at runtime via `dlopen`/`LoadLibrary` (`libloading`). |
 | `static-link` | ❌ | Link `libcronet.a` or MSVC `cronet.lib` at compile time. Required on macOS/iOS. |
-| `download-static` | ❌ | Download a verified archive only when `static-link` is also enabled. |
+| `download-static` | ❌ | Download a verified archive only for the selected static backend. |
 | `download` | ❌ | Build script downloads a prebuilt `libcronet` for the target. |
 
-`static-link` takes precedence when Cargo also enables `dynamic`.
-`download-static` alone keeps dynamic loading and performs no download.
+Desktop builds use runtime loading by default, including with `--no-default-features`.
+Enable `static-link` to embed Cronet. An explicit `dynamic` selects runtime loading
+on desktop even when `static-link` is enabled, so `download-static` skips the download.
+Apple targets always link statically. Android honors an explicit `static-link` even with `dynamic`.
 For automatic static linking, use `--features static-link,download-static`.
 Linux archives match the target's glibc or musl ABI. Windows requires MSVC.
 Automatic downloads match Rust's CRT: the default uses the `/MD` archive and
@@ -35,8 +37,7 @@ Three options, in order of manual effort:
 1. **`download` feature** — `build.rs` fetches the matching prebuilt from
    [`rust-proxy/cronet-binaries`](https://github.com/rust-proxy/cronet-binaries/releases)
    into `OUT_DIR` and verifies its **SHA-256** against a pinned checksum. No
-   network is touched unless `download`, or both `static-link` and
-   `download-static`, are enabled.
+   network is touched unless `download`, or `download-static` with the static backend, is enabled.
    - Dynamic mode: load it with [`load_downloaded_library()`]; the path is also
      exposed via [`downloaded_library_path()`].
    - Static mode: the archive is staged and linked automatically.

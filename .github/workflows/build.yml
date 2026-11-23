@@ -269,7 +269,6 @@ jobs:
         env:
           CRONET_LIB_DIR: ${{ github.workspace }}/lib
         run: |
-          # iOS has no dlopen, so we must disable the default dynamic feature
           cargo build --target ${{ matrix.rust_target }} \
             --no-default-features --features static-link
 

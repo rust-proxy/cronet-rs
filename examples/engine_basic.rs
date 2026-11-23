@@ -12,7 +12,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // In dynamic mode we must load the library first.
     // In static-link mode load_library is a no-op.
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("dylibs")?;
     }

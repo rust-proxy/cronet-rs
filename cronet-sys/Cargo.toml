@@ -11,9 +11,9 @@ links = "cronet"
 
 [lib]
 
-[dependencies]
+[target.'cfg(not(target_vendor = "apple"))'.dependencies]
 # Dynamic mode: dlopen/LoadLibrary at runtime.
-libloading = { version = "0.8", optional = true }
+libloading = "0.8"
 
 # Build-time downloader deps — only pulled in when the `download` feature is on.
 [build-dependencies]
@@ -21,10 +21,10 @@ ureq = { version = "2", optional = true, features = ["socks-proxy"] }
 sha2 = { version = "0.10", optional = true }
 
 [features]
-default = ["dynamic"]
+default = []
 
 # Load libcronet at runtime via dlopen/LoadLibrary (Linux/Windows/Android).
-dynamic = ["dep:libloading"]
+dynamic = []
 
 # Link libcronet at compile time (macOS/iOS/Android, also Linux/Windows).
 static-link = []
@@ -34,5 +34,5 @@ static-link = []
 # SHA-256 against a pinned checksum. Off by default — no network at build time.
 download = ["dep:ureq", "dep:sha2"]
 
-# Download only when static-link is also explicitly enabled.
+# Download only for the selected static backend.
 download-static = ["dep:ureq", "dep:sha2"]

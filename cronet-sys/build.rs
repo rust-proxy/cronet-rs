@@ -4,8 +4,8 @@
 //!   1. (`download` feature) Fetch the matching prebuilt `libcronet` for the
 //!      target from github.com/rust-proxy/cronet-binaries into `OUT_DIR`, with
 //!      mandatory SHA-256 verification against a pinned checksum. No network is
-//!      touched unless `download`, or both `download-static` and `static-link`,
-//!      are enabled.
+//!      touched unless `download`, or `download-static` with the static backend,
+//!      is enabled.
 //!   2. (`static-link` feature) Emit `cargo:rustc-link-*` directives so the
 //!      linker finds `libcronet.a` — either from `CRONET_LIB_DIR` or from the
 //!      file just downloaded.
@@ -123,18 +123,26 @@ fn main() {
         println!("cargo:rerun-if-env-changed={var}");
     }
 
-    let static_link = env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
-        || env::var_os("CARGO_FEATURE_DYNAMIC").is_none();
+    let static_link = build_target::uses_static_link(
+        &env::var("CARGO_CFG_TARGET_VENDOR").expect("Cargo sets the target vendor"),
+        &env::var("CARGO_CFG_TARGET_OS").expect("Cargo sets the target OS"),
+        cfg!(feature = "dynamic"),
+        cfg!(feature = "static-link"),
+    );
+    println!("cargo:rustc-check-cfg=cfg(cronet_static_link)");
+    if static_link {
+        println!("cargo:rustc-cfg=cronet_static_link");
+    }
 
     // 1. Optionally download (and verify) the prebuilt for this target.
     // A supplied native archive takes precedence over automatic downloads.
     let downloaded = if build_target::download_enabled(
         cfg!(feature = "download"),
         cfg!(feature = "download-static"),
-        cfg!(feature = "static-link"),
+        static_link,
     ) && !(static_link && env::var_os("CRONET_LIB_DIR").is_some())
     {
-        maybe_download()
+        maybe_download(static_link)
     } else {
         None
     };
@@ -158,7 +166,7 @@ fn main() {
 /// Returns `None` for targets we don't have a mapping for — callers should then
 /// require `CRONET_DOWNLOAD_ASSET` to be set explicitly.
 #[cfg(any(feature = "download", feature = "download-static"))]
-fn asset_name() -> Option<String> {
+fn asset_name(static_link: bool) -> Option<String> {
     if let Ok(explicit) = env::var("CRONET_DOWNLOAD_ASSET") {
         return Some(explicit);
     }
@@ -173,8 +181,7 @@ fn asset_name() -> Option<String> {
         &abi,
         &env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default(),
         &env::var("CARGO_CFG_TARGET_ENDIAN").unwrap_or_default(),
-        env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
-            || env::var_os("CARGO_FEATURE_DYNAMIC").is_none(),
+        static_link,
     )
     .map(|asset| {
         build_target::select_crt_asset(
@@ -193,13 +200,13 @@ fn expected_sha(asset: &str) -> Option<&'static str> {
 }
 
 #[cfg(not(any(feature = "download", feature = "download-static")))]
-fn maybe_download() -> Option<PathBuf> {
+fn maybe_download(_static_link: bool) -> Option<PathBuf> {
     None
 }
 
 #[cfg(any(feature = "download", feature = "download-static"))]
-fn maybe_download() -> Option<PathBuf> {
-    let asset = asset_name().unwrap_or_else(|| {
+fn maybe_download(static_link: bool) -> Option<PathBuf> {
+    let asset = asset_name(static_link).unwrap_or_else(|| {
         panic!(
             "cronet-sys: cannot determine prebuilt asset for target os={:?} arch={:?}; \
              set CRONET_DOWNLOAD_ASSET explicitly",
@@ -209,10 +216,7 @@ fn maybe_download() -> Option<PathBuf> {
     });
 
     let archive = download_asset(&asset, "CRONET_DOWNLOAD_SHA256");
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
-        && (env::var_os("CARGO_FEATURE_STATIC_LINK").is_some()
-            || env::var_os("CARGO_FEATURE_DYNAMIC").is_none())
-    {
+    if static_link && env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let flags_asset = format!(
             "{}.link-flags.txt",
             asset

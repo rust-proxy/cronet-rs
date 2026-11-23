@@ -11,13 +11,15 @@
 //!
 //! | Feature | Default | Platforms | Description |
 //! |---|---|---|---|
-//! | `dynamic` | ✅ | Linux, Windows, Android | Load `libcronet` at runtime via dlopen/LoadLibrary |
+//! | `dynamic` | ❌ | Linux, Windows, Android | Load `libcronet` at runtime via dlopen/LoadLibrary |
 //! | `static-link` | ❌ | macOS, iOS, Android, Linux, Windows | Link `libcronet.a` at compile time |
 //! | `android-static` | ❌ | Android | Alias for `static-link` |
-//! | `download-static` | ❌ | static targets | Download and verify a static archive only when `static-link` is also enabled |
+//! | `download-static` | ❌ | static targets | Download and verify a static archive when the static backend is selected |
 //! | `download` | ❌ | all | Have `cronet-sys`'s build script download + SHA-256 verify a prebuilt `libcronet` for the target into `OUT_DIR` |
 //!
-//! `static-link` takes precedence if Cargo also enables `dynamic`.
+//! Desktop builds load Cronet dynamically by default. Request `static-link` to embed it;
+//! explicitly enabling `dynamic` selects runtime loading even with `static-link`.
+//! Apple targets always link statically. On Android an explicit `static-link` wins.
 //! Linux archives must match the target libc (glibc or musl); Windows static
 //! linking requires MSVC and `cronet.lib` plus its generated `link_flags.txt`.
 //! Windows downloads select `/MD` for Rust's default CRT without extra flags,
@@ -25,12 +27,12 @@
 //! the application's CRT. Both variants statically link Cronet; `/MD` uses the
 //! MSVC runtime DLLs.
 //! `CRONET_LIB_DIR` bypasses downloading in static builds, including with `download-static`.
-//! `download-static` alone keeps dynamic loading and never downloads. The legacy
+//! On desktop, `download-static` alone keeps dynamic loading and skips downloading. The legacy
 //! `download` feature retains its download behavior for either backend.
 //! Downloads use the fixed `static-20261116.1` release with pinned SHA-256
 //! checksums. Cronet's private BoringSSL symbols are isolated from other TLS libraries.
 //!
-//! **macOS/iOS must use `static-link`** — dlopen is not available.
+//! **macOS/iOS always link statically** — dlopen is not available.
 //! **Android should prefer `static-link`** for stable production builds.
 //!
 //! With `download`, the native library is fetched at build time (no manual

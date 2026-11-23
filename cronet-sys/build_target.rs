@@ -1,3 +1,8 @@
+/// Apple uses native archives. Android keeps an explicitly requested static backend.
+pub fn uses_static_link(vendor: &str, os: &str, dynamic: bool, static_link: bool) -> bool {
+    vendor == "apple" || (static_link && (os == "android" || !dynamic))
+}
+
 /// The static downloader is deliberately independent of backend selection.
 pub fn download_enabled(legacy_download: bool, download_static: bool, static_link: bool) -> bool {
     legacy_download || (download_static && static_link)
@@ -114,6 +119,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn backend_and_static_download_follow_target_feature_union() {
+        for (vendor, os) in [
+            ("pc", "windows"),
+            ("unknown", "linux"),
+            ("apple", "ios"),
+            ("apple", "macos"),
+            ("unknown", "android"),
+        ] {
+            for (dynamic, static_link, desktop, android) in [
+                (false, false, false, false),
+                (true, false, false, false),
+                (false, true, true, true),
+                (true, true, false, true),
+            ] {
+                let expected = match (vendor, os) {
+                    ("apple", _) => true,
+                    (_, "android") => android,
+                    _ => desktop,
+                };
+                let selected = uses_static_link(vendor, os, dynamic, static_link);
+                assert_eq!(
+                    selected, expected,
+                    "{os}, dynamic={dynamic}, static-link={static_link}"
+                );
+                assert_eq!(download_enabled(false, true, selected), expected);
+            }
+        }
+    }
+
+    #[test]
     fn windows_archive_follows_target_crt_without_changing_other_assets() {
         for arch in ["amd64", "arm64"] {
             let archive = format!("libcronet-windows-{arch}.lib");
@@ -149,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn static_download_requires_both_features() {
+    fn static_download_requires_the_static_backend() {
         assert!(!download_enabled(false, false, false));
         assert!(!download_enabled(false, true, false));
         assert!(!download_enabled(false, false, true));

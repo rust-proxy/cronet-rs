@@ -6,11 +6,11 @@
 //! exercising the FFI bindings end-to-end. This is what catches ABI mismatches
 //! between the Rust declarations and the C headers.
 //!
-//! The tests only run on Windows with the default `dynamic` feature and only
+//! The tests only run on Windows with the dynamic backend and only
 //! when the DLL is present; otherwise they skip gracefully so cross-platform
 //! `cargo test` stays green.
 
-#![cfg(all(windows, feature = "dynamic"))]
+#![cfg(windows)]
 
 use std::path::PathBuf;
 use std::sync::Once;
@@ -33,6 +33,9 @@ static LOAD: Once = Once::new();
 /// `load_library` stores the handle in a process-global `OnceLock`, so this is
 /// safe to call from every test; only the first call actually loads.
 fn ensure_loaded() -> bool {
+    if cronet_rs::sys::STATIC_LINKED {
+        return false;
+    }
     let root = dylibs_root();
     let dll = root.join("windows-amd64").join("libcronet.dll");
     if !dll.exists() {

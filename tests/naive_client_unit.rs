@@ -103,7 +103,6 @@ fn test_dial_before_start_returns_error() {
 #[test]
 #[ignore = "requires libcronet shared library"]
 fn test_start_twice_rejected() {
-    #[cfg(feature = "dynamic")]
     unsafe {
         cronet_rs::sys::load_library("libcronet.so.119").unwrap();
     }
