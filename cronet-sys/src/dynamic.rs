@@ -38,6 +38,26 @@ pub unsafe fn load_library(path: &str) -> Result<(), Box<dyn std::error::Error>>
         p.to_path_buf()
     };
     let lib = Library::new(&resolved)?;
+    // Both revisions export the same dialer names with incompatible signatures.
+    let create = lib.get::<unsafe extern "C" fn() -> super::RawEngine>(b"Cronet_Engine_Create")?;
+    let destroy = lib.get::<unsafe extern "C" fn(super::RawEngine)>(b"Cronet_Engine_Destroy")?;
+    let version = lib.get::<unsafe extern "C" fn(super::RawEngine) -> *const std::ffi::c_char>(
+        b"Cronet_Engine_GetVersionString",
+    )?;
+    let engine = create();
+    if engine.0 == 0 {
+        return Err("Cronet version probe could not create an engine".into());
+    }
+    let ptr = version(engine);
+    let actual = if ptr.is_null() {
+        String::from("<unknown>")
+    } else {
+        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+    };
+    destroy(engine);
+    if actual != "154.0.8037.49" {
+        return Err(format!("incompatible Cronet {actual}, expected SagerNet 154.0.8037.49").into());
+    }
     LIB.set(lib).map_err(|_| "library already loaded".into())
 }
 
@@ -267,8 +287,9 @@ pub unsafe fn Cronet_Engine_SetUdpDialer(
     engine: super::RawEngine,
     callback: Option<super::RawUdpDialer>,
     context: *mut std::ffi::c_void,
+    on_close: Option<super::RawUdpSocketClose>,
 ) {
-    ffi_call!(b"Cronet_Engine_SetUdpDialer", unsafe extern "C" fn(super::RawEngine, Option<super::RawUdpDialer>, *mut std::ffi::c_void), engine, callback, context)
+    ffi_call!(b"Cronet_Engine_SetUdpDialer", unsafe extern "C" fn(super::RawEngine, Option<super::RawUdpDialer>, *mut std::ffi::c_void, Option<super::RawUdpSocketClose>), engine, callback, context, on_close)
 }
 
 // ---------------------------------------------------------------------------

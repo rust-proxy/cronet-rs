@@ -25,7 +25,7 @@ fn dial(
     address: *const c_char,
     port: u16,
     connect: impl FnOnce(&dyn SocketDialer, SocketAddr) -> io::Result<i32>,
-) -> i32 {
+) -> isize {
     // Both pointers come from Cronet. The engine owns the context, and the
     // address is a NUL-terminated IP literal valid for this callback.
     if context.is_null() || address.is_null() {
@@ -39,7 +39,7 @@ fn dial(
             .and_then(|value| value.parse().ok());
         let Some(ip) = ip else { return -4 };
         match connect(&*dialer.0, SocketAddr::new(ip, port)) {
-            Ok(fd) => fd,
+            Ok(fd) => fd as isize,
             Err(err) => {
                 log::debug!("Cronet socket dial failed: {err}");
                 match err.kind() {
@@ -56,7 +56,7 @@ fn dial(
     .unwrap_or(-2) // ERR_FAILED; never unwind across the C boundary.
 }
 
-pub(crate) extern "C" fn tcp(ctx: *mut c_void, ip: *const c_char, port: u16) -> i32 {
+pub(crate) extern "C" fn tcp(ctx: *mut c_void, ip: *const c_char, port: u16) -> isize {
     dial(ctx, ip, port, |dialer, peer| {
         Ok(dialer.connect_tcp(peer)?.into_raw_fd())
     })
@@ -68,8 +68,9 @@ pub(crate) extern "C" fn udp(
     port: u16,
     local_ip: *mut c_char,
     local_port: *mut u16,
-) -> i32 {
-    if local_ip.is_null() || local_port.is_null() {
+    socket_id: *mut u64,
+) -> isize {
+    if local_ip.is_null() || local_port.is_null() || socket_id.is_null() {
         return -4;
     }
     dial(ctx, ip, port, |dialer, peer| {
@@ -82,6 +83,8 @@ pub(crate) extern "C" fn udp(
             std::ptr::copy_nonoverlapping(text.as_ptr(), local_ip.cast(), text.len());
             *local_ip.add(text.len()) = 0;
             *local_port = local.port();
+            // Cronet owns the fd; Rust needs no separate close notification.
+            *socket_id = 0;
         }
         Ok(socket.into_raw_fd())
     })
@@ -90,14 +93,15 @@ pub(crate) extern "C" fn udp(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
     use std::os::fd::FromRawFd;
 
     #[derive(Debug)]
     struct LoopbackDialer;
 
     impl SocketDialer for LoopbackDialer {
-        fn connect_tcp(&self, _: SocketAddr) -> io::Result<TcpStream> {
-            Err(io::ErrorKind::PermissionDenied.into())
+        fn connect_tcp(&self, peer: SocketAddr) -> io::Result<TcpStream> {
+            TcpStream::connect(peer)
         }
 
         fn connect_udp(&self, peer: SocketAddr) -> io::Result<UdpSocket> {
@@ -109,26 +113,46 @@ mod tests {
 
     #[test]
     fn udp_transfers_a_connected_fd_and_reports_its_local_endpoint() -> io::Result<()> {
-        let peer = UdpSocket::bind("[::1]:0")?;
-        let mut context = DialerContext(Arc::new(LoopbackDialer));
-        let ctx = std::ptr::from_mut(&mut context).cast();
-        let mut local_ip = [0; 46];
-        let mut port = 0;
-        let fd = udp(
-            ctx,
-            c"::1".as_ptr(),
-            peer.local_addr()?.port(),
-            local_ip.as_mut_ptr(),
-            &mut port,
-        );
-        assert!(fd >= 0);
-        // The callback transfers ownership of exactly one fd to the caller.
-        let socket = unsafe { UdpSocket::from_raw_fd(fd) };
-        assert_eq!(unsafe { CStr::from_ptr(local_ip.as_ptr()) }, c"::1");
-        assert_eq!(socket.local_addr()?.port(), port);
-        assert_eq!(socket.peer_addr()?, peer.local_addr()?);
-        assert_eq!(tcp(ctx, c"127.0.0.1".as_ptr(), 443), -10);
-        assert_eq!(tcp(ctx, c"invalid".as_ptr(), 443), -4);
+        let mut context = Box::new(DialerContext(Arc::new(LoopbackDialer)));
+        let ctx = std::ptr::from_mut(&mut *context).cast();
+        for ip in [c"127.0.0.1", c"::1"] {
+            let address = SocketAddr::new(ip.to_str().unwrap().parse().unwrap(), 0);
+            let peer = UdpSocket::bind(address)?;
+            let mut local_ip = [0; 46];
+            let mut port = 0;
+            let mut socket_id = u64::MAX;
+            let fd = udp(
+                ctx,
+                ip.as_ptr(),
+                peer.local_addr()?.port(),
+                local_ip.as_mut_ptr(),
+                &mut port,
+                &mut socket_id,
+            );
+            assert!(fd >= 0);
+            assert_eq!(socket_id, 0);
+            let socket = unsafe { UdpSocket::from_raw_fd(i32::try_from(fd).unwrap()) };
+            assert_eq!(unsafe { CStr::from_ptr(local_ip.as_ptr()) }, ip);
+            assert_eq!(socket.local_addr()?.port(), port);
+            assert_eq!(socket.peer_addr()?, peer.local_addr()?);
+            let listener = TcpListener::bind(address)?;
+            let fd = tcp(ctx, ip.as_ptr(), listener.local_addr()?.port());
+            assert!(fd >= 0);
+            let stream = unsafe { TcpStream::from_raw_fd(i32::try_from(fd).unwrap()) };
+            assert_eq!(stream.peer_addr()?, listener.local_addr()?);
+            assert_eq!(
+                udp(
+                    ctx,
+                    c"invalid".as_ptr(),
+                    443,
+                    local_ip.as_mut_ptr(),
+                    &mut port,
+                    &mut socket_id
+                ),
+                -4isize
+            );
+        }
+        assert_eq!(tcp(ctx, c"invalid".as_ptr(), 443), -4isize);
         Ok(())
     }
 }

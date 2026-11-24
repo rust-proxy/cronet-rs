@@ -51,7 +51,7 @@ impl Engine {
         let ptr = std::ptr::from_mut(&mut *context).cast();
         unsafe {
             sys::Cronet_Engine_SetDialer(self.raw, Some(crate::linux_dialer::tcp), ptr);
-            sys::Cronet_Engine_SetUdpDialer(self.raw, Some(crate::linux_dialer::udp), ptr);
+            sys::Cronet_Engine_SetUdpDialer(self.raw, Some(crate::linux_dialer::udp), ptr, None);
         }
         self.dialer_context = Some(context);
     }
@@ -127,7 +127,7 @@ impl Engine {
     /// Set a custom UDP dialer callback.
     pub fn set_udp_dialer(&mut self, _dialer: Option<UdpDialer>) {
         match _dialer {
-            None => unsafe { sys::Cronet_Engine_SetUdpDialer(self.raw, None, std::ptr::null_mut()) },
+            None => unsafe { sys::Cronet_Engine_SetUdpDialer(self.raw, None, std::ptr::null_mut(), None) },
             Some(_d) => {
                 log::warn!("SetUdpDialer: not fully implemented in purego mode yet");
             }

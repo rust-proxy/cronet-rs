@@ -38,7 +38,7 @@ pub unsafe fn load_library(_path: &str) -> Result<(), Box<dyn std::error::Error>
 mod ffi {
     use super::super::{
         RawBidirectionalStream, RawBidirectionalStreamCallback, RawBidirectionalStreamHeaderArray,
-        RawCertVerifier, RawDialer, RawEngine, RawEngineParams, RawStreamEngine, RawUdpDialer,
+        RawCertVerifier, RawDialer, RawEngine, RawEngineParams, RawStreamEngine, RawUdpDialer, RawUdpSocketClose,
     };
 
     unsafe extern "C" {
@@ -64,6 +64,7 @@ mod ffi {
             engine: RawEngine,
             callback: Option<RawUdpDialer>,
             context: *mut std::ffi::c_void,
+            on_close: Option<RawUdpSocketClose>,
         );
 
         // ---- EngineParams ----
@@ -174,8 +175,9 @@ pub unsafe fn Cronet_Engine_SetUdpDialer(
     engine: super::RawEngine,
     callback: Option<super::RawUdpDialer>,
     context: *mut std::ffi::c_void,
+    on_close: Option<super::RawUdpSocketClose>,
 ) {
-    ffi::Cronet_Engine_SetUdpDialer(engine, callback, context)
+    ffi::Cronet_Engine_SetUdpDialer(engine, callback, context, on_close)
 }
 
 // ---------------------------------------------------------------------------

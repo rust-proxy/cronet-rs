@@ -58,7 +58,7 @@ pub struct RawCertVerifier(pub usize);
 
 /// TCP dialer callback: returns fd (or negative net_error).
 pub type RawDialer =
-    extern "C" fn(context: *mut std::ffi::c_void, address: *const std::os::raw::c_char, port: u16) -> i32;
+    extern "C" fn(context: *mut std::ffi::c_void, address: *const std::os::raw::c_char, port: u16) -> isize;
 
 /// UDP dialer callback: returns fd, writes back local address/port.
 pub type RawUdpDialer = extern "C" fn(
@@ -67,7 +67,11 @@ pub type RawUdpDialer = extern "C" fn(
     port: u16,
     out_local_address: *mut std::os::raw::c_char,
     out_local_port: *mut u16,
-) -> i32;
+    out_socket_id: *mut u64,
+) -> isize;
+
+/// Optional notification for a nonzero ID returned by the UDP dialer.
+pub type RawUdpSocketClose = extern "C" fn(socket_id: u64);
 
 /// Raw callback struct for `bidirectional_stream`.
 ///
