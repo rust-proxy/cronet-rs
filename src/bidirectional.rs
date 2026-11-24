@@ -725,13 +725,17 @@ impl Write for WriteHalf {
 ///
 /// Implements `Read` and `Write` for use as an I/O stream.
 pub struct BidirectionalConn {
-    stream: BidirectionalStream,
+    stream: Arc<BidirectionalStream>,
     closed: bool,
 }
 
 impl BidirectionalConn {
+    pub(crate) fn cancel_handle(&self) -> StreamCancel {
+        StreamCancel(self.stream.clone())
+    }
+
     pub(crate) fn into_split(self) -> (ReadHalf, WriteHalf, StreamCancel) {
-        let stream = Arc::new(self.stream);
+        let stream = self.stream;
         (
             ReadHalf(stream.clone()),
             WriteHalf {
@@ -743,7 +747,7 @@ impl BidirectionalConn {
     }
     pub fn new(stream_engine: &BidirectionalStreamEngine) -> Self {
         Self {
-            stream: BidirectionalStream::new(stream_engine.raw, None),
+            stream: Arc::new(BidirectionalStream::new(stream_engine.raw, None)),
             closed: false,
         }
     }
@@ -757,7 +761,8 @@ impl BidirectionalConn {
         priority: i32,
         end_of_stream: bool,
     ) -> std::result::Result<(), CronetError> {
-        self.stream
+        Arc::get_mut(&mut self.stream)
+            .ok_or_else(|| CronetError::Config("cannot start a shared stream".into()))?
             .start(method, url, headers, priority, end_of_stream)
     }
 
@@ -791,7 +796,7 @@ impl Read for BidirectionalConn {
                 "connection closed",
             ));
         }
-        match self.stream.read(buf) {
+        match self.stream.read_shared(buf) {
             Ok(n) => Ok(n as usize),
             // A clean remote close surfaces as EOF, not an error.
             Err(CronetError::ConnectionClosed) => Ok(0),
@@ -809,7 +814,7 @@ impl Write for BidirectionalConn {
             ));
         }
         self.stream
-            .write(buf, false)
+            .write_shared(buf, false)
             .map(|_| buf.len())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }

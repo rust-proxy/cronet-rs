@@ -18,6 +18,12 @@ pub struct NaiveConn {
 }
 
 impl NaiveConn {
+    /// Cancel this CONNECT independently, including while another thread waits
+    /// for its response headers. Keep the client engine alive until the handle is dropped.
+    pub fn cancel_handle(&self) -> StreamCancel {
+        self.inner.cancel_handle()
+    }
+
     /// Split an authenticated tunnel into independently progressing I/O halves.
     /// Padding counters are directional, so each half retains its own state.
     /// Keep the client engine alive until both halves and the cancel handle
