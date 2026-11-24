@@ -58,12 +58,12 @@ mod ffi {
         pub fn Cronet_Engine_SetDialer(
             engine: RawEngine,
             callback: Option<RawDialer>,
-            context: u64,
+            context: *mut std::ffi::c_void,
         );
         pub fn Cronet_Engine_SetUdpDialer(
             engine: RawEngine,
             callback: Option<RawUdpDialer>,
-            context: u64,
+            context: *mut std::ffi::c_void,
         );
 
         // ---- EngineParams ----
@@ -84,7 +84,7 @@ mod ffi {
         // ---- BidirectionalStream ----
         pub fn bidirectional_stream_create(
             engine: RawStreamEngine,
-            annotation: u64,
+            annotation: usize,
             callback: *const RawBidirectionalStreamCallback,
         ) -> RawBidirectionalStream;
         pub fn bidirectional_stream_destroy(stream: RawBidirectionalStream) -> i32;
@@ -165,7 +165,7 @@ pub unsafe fn Cronet_Engine_SetMockCertVerifierForTesting(
 pub unsafe fn Cronet_Engine_SetDialer(
     engine: super::RawEngine,
     callback: Option<super::RawDialer>,
-    context: u64,
+    context: *mut std::ffi::c_void,
 ) {
     ffi::Cronet_Engine_SetDialer(engine, callback, context)
 }
@@ -173,7 +173,7 @@ pub unsafe fn Cronet_Engine_SetDialer(
 pub unsafe fn Cronet_Engine_SetUdpDialer(
     engine: super::RawEngine,
     callback: Option<super::RawUdpDialer>,
-    context: u64,
+    context: *mut std::ffi::c_void,
 ) {
     ffi::Cronet_Engine_SetUdpDialer(engine, callback, context)
 }
@@ -228,7 +228,7 @@ pub unsafe fn Cronet_EngineParams_http_cache_max_size_set(params: super::RawEngi
 
 pub unsafe fn bidirectional_stream_create(
     engine: super::RawStreamEngine,
-    annotation: u64,
+    annotation: usize,
     callback: *const super::RawBidirectionalStreamCallback,
 ) -> super::RawBidirectionalStream {
     ffi::bidirectional_stream_create(engine, annotation, callback)

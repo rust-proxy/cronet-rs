@@ -143,6 +143,16 @@ impl NaiveClient {
 
     /// Start the Cronet engine and prepare for connections.
     pub fn start(&mut self) -> std::result::Result<(), CronetError> {
+        self.start_inner(|_| {})
+    }
+
+    /// Start using a single socket policy for all physical connections in this engine.
+    #[cfg(target_os = "linux")]
+    pub fn start_with_dialer(&mut self, dialer: Arc<dyn crate::linux_dialer::SocketDialer>) -> Result<(), CronetError> {
+        self.start_inner(|engine| engine.install_socket_dialer(dialer))
+    }
+
+    fn start_inner(&mut self, configure: impl FnOnce(&mut Engine)) -> Result<(), CronetError> {
         let mut state = self.state.lock().unwrap();
         match *state {
             ClientState::Closed => return Err(CronetError::Config("client is closed".into())),
@@ -154,6 +164,7 @@ impl NaiveClient {
         drop(state);
 
         let mut engine = Engine::new();
+        configure(&mut engine);
 
         // Set trusted root certificates if provided
         if let Some(ref pem) = self.config.trusted_root_certificates {

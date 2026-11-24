@@ -24,13 +24,36 @@ pub struct Engine {
     pub(crate) raw: sys::RawEngine,
     started: bool,
     destroyed: bool,
+    #[cfg(target_os = "linux")]
+    dialer_context: Option<Box<crate::linux_dialer::DialerContext>>,
 }
 
 impl Engine {
     /// Create a new Cronet Engine instance.
     pub fn new() -> Self {
         let raw = unsafe { sys::Cronet_Engine_Create() };
-        Self { raw, started: false, destroyed: false }
+        Self {
+            raw,
+            started: false,
+            destroyed: false,
+            #[cfg(target_os = "linux")]
+            dialer_context: None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn install_socket_dialer(
+        &mut self,
+        dialer: std::sync::Arc<dyn crate::linux_dialer::SocketDialer>,
+    ) {
+        // The allocation stays at a fixed address until after native engine destruction.
+        let mut context = Box::new(crate::linux_dialer::DialerContext(dialer));
+        let ptr = std::ptr::from_mut(&mut *context).cast();
+        unsafe {
+            sys::Cronet_Engine_SetDialer(self.raw, Some(crate::linux_dialer::tcp), ptr);
+            sys::Cronet_Engine_SetUdpDialer(self.raw, Some(crate::linux_dialer::udp), ptr);
+        }
+        self.dialer_context = Some(context);
     }
 
     /// Start the engine with the given parameters.
@@ -94,7 +117,7 @@ impl Engine {
     /// Set a custom TCP dialer callback.
     pub fn set_dialer(&mut self, _dialer: Option<Dialer>) {
         match _dialer {
-            None => unsafe { sys::Cronet_Engine_SetDialer(self.raw, None, 0) },
+            None => unsafe { sys::Cronet_Engine_SetDialer(self.raw, None, std::ptr::null_mut()) },
             Some(_d) => {
                 log::warn!("SetDialer: not fully implemented in purego mode yet");
             }
@@ -104,7 +127,7 @@ impl Engine {
     /// Set a custom UDP dialer callback.
     pub fn set_udp_dialer(&mut self, _dialer: Option<UdpDialer>) {
         match _dialer {
-            None => unsafe { sys::Cronet_Engine_SetUdpDialer(self.raw, None, 0) },
+            None => unsafe { sys::Cronet_Engine_SetUdpDialer(self.raw, None, std::ptr::null_mut()) },
             Some(_d) => {
                 log::warn!("SetUdpDialer: not fully implemented in purego mode yet");
             }

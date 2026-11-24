@@ -30,27 +30,27 @@
 /// Opaque handle to a `Cronet_Engine` object.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct RawEngine(pub u64);
+pub struct RawEngine(pub usize);
 
 /// Opaque handle to a `Cronet_EngineParams` object.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct RawEngineParams(pub u64);
+pub struct RawEngineParams(pub usize);
 
 /// Opaque handle to a `stream_engine` (bidirectional stream engine).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct RawStreamEngine(pub u64);
+pub struct RawStreamEngine(pub usize);
 
 /// Opaque handle to a `bidirectional_stream`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct RawBidirectionalStream(pub u64);
+pub struct RawBidirectionalStream(pub usize);
 
 /// Opaque handle to a `CertVerifier`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct RawCertVerifier(pub u64);
+pub struct RawCertVerifier(pub usize);
 
 // ---------------------------------------------------------------------------
 // C callback types — always compiled
@@ -58,11 +58,11 @@ pub struct RawCertVerifier(pub u64);
 
 /// TCP dialer callback: returns fd (or negative net_error).
 pub type RawDialer =
-    extern "C" fn(context: u64, address: *const std::os::raw::c_char, port: u16) -> i32;
+    extern "C" fn(context: *mut std::ffi::c_void, address: *const std::os::raw::c_char, port: u16) -> i32;
 
 /// UDP dialer callback: returns fd, writes back local address/port.
 pub type RawUdpDialer = extern "C" fn(
-    context: u64,
+    context: *mut std::ffi::c_void,
     address: *const std::os::raw::c_char,
     port: u16,
     out_local_address: *mut std::os::raw::c_char,

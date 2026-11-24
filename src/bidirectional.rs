@@ -158,7 +158,7 @@ fn terminal_to_err(t: Terminal) -> CronetError {
 #[inline]
 fn shared_ptr(stream: sys::RawBidirectionalStream) -> *const Shared {
     unsafe {
-        let base = (stream.0 as usize) as *const *const std::ffi::c_void;
+        let base = stream.0 as *const *const std::ffi::c_void;
         *base.add(1) as *const Shared
     }
 }
@@ -214,7 +214,7 @@ extern "C" fn on_stream_ready(stream: sys::RawBidirectionalStream) {
     };
     sh.cond.notify_all();
     if let Some(cb) = cb {
-        cb.lock().unwrap().on_stream_ready(stream.0);
+        cb.lock().unwrap().on_stream_ready(stream.0 as u64);
     }
 }
 
@@ -236,7 +236,7 @@ extern "C" fn on_response_headers_received(
     if let Some(cb) = cb {
         cb.lock()
             .unwrap()
-            .on_response_headers_received(stream.0, map, proto);
+            .on_response_headers_received(stream.0 as u64, map, proto);
     }
 }
 
@@ -256,7 +256,7 @@ extern "C" fn on_read_completed(
     };
     sh.cond.notify_all();
     if let Some(cb) = cb {
-        cb.lock().unwrap().on_read_completed(stream.0, bytes_read);
+        cb.lock().unwrap().on_read_completed(stream.0 as u64, bytes_read);
     }
 }
 
@@ -269,7 +269,7 @@ extern "C" fn on_write_completed(stream: sys::RawBidirectionalStream, _data: *co
     };
     sh.cond.notify_all();
     if let Some(cb) = cb {
-        cb.lock().unwrap().on_write_completed(stream.0);
+        cb.lock().unwrap().on_write_completed(stream.0 as u64);
     }
 }
 
@@ -288,7 +288,7 @@ extern "C" fn on_response_trailers_received(
     if let Some(cb) = cb {
         cb.lock()
             .unwrap()
-            .on_response_trailers_received(stream.0, map);
+            .on_response_trailers_received(stream.0 as u64, map);
     }
 }
 
@@ -312,9 +312,9 @@ fn finish(stream: sys::RawBidirectionalStream, outcome: Terminal) {
     if let Some(cb) = cb {
         let mut guard = cb.lock().unwrap();
         match outcome {
-            Terminal::Succeeded => guard.on_succeeded(stream.0),
-            Terminal::Failed(net) => guard.on_failed(stream.0, net),
-            Terminal::Canceled => guard.on_canceled(stream.0),
+            Terminal::Succeeded => guard.on_succeeded(stream.0 as u64),
+            Terminal::Failed(net) => guard.on_failed(stream.0 as u64, net),
+            Terminal::Canceled => guard.on_canceled(stream.0 as u64),
         }
     }
     // Balance the Arc::into_raw() done at creation. After a terminal event the C
@@ -366,7 +366,7 @@ impl BidirectionalStream {
         let shared = Arc::new(Shared::new(user_cb));
         // Hand one strong ref to the C side as the stream annotation. It is
         // reclaimed by the terminal callback (see `finish`).
-        let annotation = Arc::into_raw(Arc::clone(&shared)) as usize as u64;
+        let annotation = Arc::into_raw(Arc::clone(&shared)) as usize;
         let raw = unsafe { sys::bidirectional_stream_create(raw_engine, annotation, &CALLBACKS) };
         Self {
             raw,

@@ -97,6 +97,8 @@
 pub mod bidirectional;
 pub mod dns;
 pub mod engine;
+#[cfg(target_os = "linux")]
+pub mod linux_dialer;
 pub mod engine_params;
 pub mod error;
 pub mod naive_client;
