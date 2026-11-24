@@ -380,7 +380,11 @@ fn configure_static_link(downloaded: Option<&std::path::Path>) {
             }
         }
         "macos" | "ios" | "tvos" => {
+            println!("cargo:rustc-link-lib=framework=CFNetwork");
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=Foundation");
+            let ui_framework = if target_os == "macos" { "AppKit" } else { "UIKit" };
+            println!("cargo:rustc-link-lib=framework={ui_framework}");
             println!("cargo:rustc-link-lib=framework=Security");
             println!("cargo:rustc-link-lib=framework=SystemConfiguration");
         }

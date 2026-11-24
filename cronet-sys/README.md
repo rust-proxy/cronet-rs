@@ -63,9 +63,9 @@ Three options, in order of manual effort:
 | `CRONET_DOWNLOAD_DIR` | Cache directory for downloads, default `OUT_DIR`. |
 
 Downloads use the fixed `chromium-154.0.8037.49-1` release and pinned SHA-256 checksums,
-including the Windows linker metadata. The iOS x64 simulator archive is temporarily
-omitted from this release; other Apple targets remain available. Cached files
-are verified before reuse.
+including the Windows linker metadata. The release includes Intel and ARM64 iOS
+simulator archives. For the macOS archives, set a deployment target of macOS
+13.0 or newer. Cached files are verified before reuse.
 A mismatch fails the build; update the release tag and checksum table together
 when intentionally adopting a new build. Environment checksums apply only to
 assets without a pinned entry.

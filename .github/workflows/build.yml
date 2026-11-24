@@ -197,6 +197,7 @@ jobs:
           - rust_target: x86_64-apple-darwin
             release_arch: amd64
     env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
       ASSET: libcronet-darwin-${{ matrix.release_arch }}.a
     steps:
       - uses: actions/checkout@v4
@@ -233,6 +234,8 @@ jobs:
         run: |
           cargo test --target ${{ matrix.rust_target }} \
             --features static-link
+          cargo test --locked --target ${{ matrix.rust_target }} --features static-link \
+            --lib -- --include-ignored
 
   #############################################################################
   # iOS — static-link mode (.a downloaded)
