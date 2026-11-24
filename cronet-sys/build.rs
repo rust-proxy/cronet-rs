@@ -17,7 +17,7 @@
 //!
 //! - `CRONET_LIB_DIR`         — dir containing `libcronet.a` (static mode).
 //! - `CRONET_STATIC_NAME`     — static lib stem (default `cronet`).
-//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `static-20261116.1`).
+//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `chromium-154.0.8037.49-1`).
 //! - `CRONET_DOWNLOAD_ASSET`  — override the auto-detected asset file name.
 //! - `CRONET_DOWNLOAD_SHA256` — expected SHA-256 for a custom/unpinned asset.
 //! - `CRONET_DOWNLOAD_LINK_FLAGS_SHA256` — expected SHA-256 for Windows link flags.
@@ -32,72 +32,73 @@ use std::path::PathBuf;
 #[cfg(any(feature = "download", feature = "download-static"))]
 const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releases/download";
 
-/// Pinned SHA-256 checksums for the fixed `static-20261116.1` release.
+/// Pinned SHA-256 checksums for the fixed `chromium-154.0.8037.49-1` release.
 /// Update the release tag and this table together when adopting a new build.
 #[cfg(any(feature = "download", feature = "download-static"))]
 #[rustfmt::skip]
 const CHECKSUMS: &[(&str, &str)] = &[
-    ("libcronet-android-386.a", "edf35fc0c5c7f01230d0b8024bc735154528bc1f48dee59d8bd55f2f76a62fba"),
-    ("libcronet-android-amd64.a", "e301077dc89f061fedeb9531cedd3041caac7fe21f3b1e06631773b289ce0f93"),
-    ("libcronet-android-arm.a", "7e600d9e38f9343313d48b536f19739ca228cb096ff866eae3eb7b71086c2d66"),
-    ("libcronet-android-arm64.a", "6970194fd468fbe92906c3e4cdbf14f053bdc59a7185ae7ee05442ed75e88229"),
-    ("libcronet-darwin-amd64.a", "ddaa895794766013347330fe80edc59fe96e6a95fca2cee4d027497c8d75906b"),
-    ("libcronet-darwin-arm64.a", "e901fe7956d6b92dd385c313f8695a6f4a1989ca69320fe71cd2c434481ada13"),
-    ("libcronet-ios-arm64.a", "7b03c4f8cf864e52d92f6d4db92adc04afcb7d5b112cbdfdd13fa2622130fb21"),
-    ("libcronet-ios-arm64_simulator.a", "3a2cab4a6e3fee750ccabb21d54d4cac146080ad692d5b134c08ab99b6a93581"),
-    ("libcronet-linux-386.a", "51b9a27fa7c2bcff80734d7baf94afb8d2d6376bab73e945317ade8c66e39a6f"),
+    ("libcronet-android-386.a", "c3427955d6ddf603bc572a9e9dc546972a5f5ad195a20289fab09b5365220991"),
+    ("libcronet-android-amd64.a", "f015e90bd4ed965580215f36a493cd7f9346b5355bb5e164acec9109b0fa2f82"),
+    ("libcronet-android-arm.a", "7718d4f5574b5e7a552790c38c3daedeb2ca6c499fce4f0c81d1409de3cdc6c1"),
+    ("libcronet-android-arm64.a", "e5d6e58a6aa24287358376a76fd280b4d8d62472c4b215dbb853d3a27b2722ae"),
+    ("libcronet-darwin-amd64.a", "dddb764dad4ea2008699f6b9dd0b70d3042d917097bd657200b149e3446307b2"),
+    ("libcronet-darwin-arm64.a", "3c03d46121140a66044dc42b17197ac046870b945cbb2ef292223645a17d6034"),
+    ("libcronet-ios-amd64_simulator.a", "090d37b81c9e9c028607ba129b6d3eba6d11a8e813cc0daa6baf248659da666f"),
+    ("libcronet-ios-arm64.a", "825811d26ad6eaf6dfe9041ed7e097eb4412acaa1f9012226a30f94d9a6262a7"),
+    ("libcronet-ios-arm64_simulator.a", "c9642da81f761c2a859cbf6ef97b41889a42fee27d3dac262c966914c3992582"),
+    ("libcronet-linux-386.a", "62c5c85c34cf5b90796d98a25074bc4005a073a7a94a805b332ed357e6ca67fa"),
     ("libcronet-linux-386.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-386.so", "ba4cdbbaf787d5eca0c965979e485b6f8b1415112f9de900584a5768be05e516"),
-    ("libcronet-linux-386_musl.a", "a63a516cba1f1a21bfa4e4e9ed1422561bfd21970e93064f2c515da97724c4c2"),
+    ("libcronet-linux-386.so", "d15e359cd27f6a04313af363aa092eda1d02fe8b8131dce7ee51a860943fab56"),
+    ("libcronet-linux-386_musl.a", "33e257b9cf9cc13e6673165c8855981adc46d3017dabcb47eed15f5d37805a00"),
     ("libcronet-linux-386_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-linux-amd64.a", "97392860f73550b284690f8cc28cb913b063a3cb68f47b101f0fd8462d70636f"),
+    ("libcronet-linux-amd64.a", "b5819a90e0628daf23a4e5f72c085b5fd297090964556291bb1c045cf5892b68"),
     ("libcronet-linux-amd64.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-amd64.so", "c0cdd7dcfa9101ff49f93918c754a87e3b4d0c47016cf5bd995ec4a251393a35"),
-    ("libcronet-linux-amd64_musl.a", "d95aa89201b7830cb40f4bc29474c5a0c2b47d8083fb9cac9394ab210b8982f0"),
+    ("libcronet-linux-amd64.so", "e66882e193318719f2ab880ef54e27fd0fd4e824a6d7829074770758af0e9409"),
+    ("libcronet-linux-amd64_musl.a", "b16d40eb14b8ef7780336a271b7a1ceeecbb3bd5a41086c299f904829e1abb1e"),
     ("libcronet-linux-amd64_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-linux-arm.a", "c3c9d13559283395405ba2eb5b811f9f41f3481bdf339f8ac95c5c6701199522"),
+    ("libcronet-linux-arm.a", "8faff0742e7a3c8b5d73c222dcd0815ba0f02b7c8f6289adbdb288baafe67d82"),
     ("libcronet-linux-arm.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-arm.so", "711f399ca4595eb2f113717ea5e80c29b89e571efd7773ad7524bbd139d2e3ce"),
-    ("libcronet-linux-arm64.a", "b79dbe80d9af766b3b1d087b93e38aabda1661e06f6809962293f2f000e750e2"),
+    ("libcronet-linux-arm.so", "b0ea1dc4ffe88e33b2912d5d950b2388632930f9f1f115e534a754a0f10bdaf4"),
+    ("libcronet-linux-arm64.a", "8947ed692d9c6006c3a31e88cf2f272be03e2c07d6673bc3d7a8157c483b4d40"),
     ("libcronet-linux-arm64.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-arm64.so", "7e39992f7c990db32b0651f864cb3686ad9529f3f6fe57d7e4fdac0befa8dbb9"),
-    ("libcronet-linux-arm64_musl.a", "246b4144891191de6f6ea6e81e1e1105841bb3adea4a825839d569f5fd4327d9"),
+    ("libcronet-linux-arm64.so", "2b32ce765358ed57123df3409583b3b0cf022e0324692ab167bcfef764daff5a"),
+    ("libcronet-linux-arm64_musl.a", "c42e69c678d71a616232488c004e0eba81c166c7fbe3bfd52502fe3a08f166bc"),
     ("libcronet-linux-arm64_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-linux-arm_musl.a", "f730c859c02785b7652cbdf7367f48f39c7564f821298f7afdb0609cb42369e8"),
+    ("libcronet-linux-arm_musl.a", "9bf40169d35c760e2c425c99c2d99b4b2aa3ceb3fb3d283b3cfaabd07eaaa729"),
     ("libcronet-linux-arm_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-linux-loong64.a", "5af1b7e4c80d20d8558059f6bef929233715f7cbebc04b58b7478d3dec8cd429"),
+    ("libcronet-linux-loong64.a", "ddb409653b1ee0fde3b7e5523d2fe727ceed26e0051ac31319f9ff18535c397c"),
     ("libcronet-linux-loong64.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-loong64.so", "aeba1019bc832ca0c570e341c83241c24232a51118382c7e1487130495bc7422"),
-    ("libcronet-linux-loong64_musl.a", "3df3f3f701318c5e593c2079351f8a3e7426a8b135b8ce1f47d61bf64fb8b31b"),
+    ("libcronet-linux-loong64.so", "f9062a1c6076bc4588fe7d6b3503f9d0575579a84a193f6770ba4a8c13b9e45f"),
+    ("libcronet-linux-loong64_musl.a", "e97571dbb0a2b1aff7df1db09a2f4ceeef008a2ea1b5eacfdca3a2cc5f29c3bb"),
     ("libcronet-linux-loong64_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-linux-mips64le.a", "3ae32852224bbd57d32c24a6a95f62bfe478795c2a91e0bb44a3c5c40c69084f"),
+    ("libcronet-linux-mips64le.a", "363b43ad7c5c57e84c3e4aa42176ccafa078d4db72be88b212686f055c5df29d"),
     ("libcronet-linux-mips64le.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-mips64le.so", "5485c699a07022ac2e16d152dcca48954e19c55846fa0de852caabaaf51a32f7"),
-    ("libcronet-linux-mipsle.a", "caccfba6248b5f46e0352e36c2b1902d41365d87523f8770f10ae97f8b7aca8d"),
+    ("libcronet-linux-mips64le.so", "e49e029ed8c7ba46515285ad634ab0337b39ca5a91fa8c5df9d5b174f7700342"),
+    ("libcronet-linux-mipsle.a", "6e497a21e291ed532208d66effc94640fa234362d286ab368ebda850751227ec"),
     ("libcronet-linux-mipsle.link-flags.txt", "2906b769664b8caba306bd9027ea645f7831df4a60accdac9380e0ca915b31c5"),
-    ("libcronet-linux-mipsle.so", "5180527913818308bbbdd695be539f417fd888627e84e46579bd5fbc1ae171a1"),
-    ("libcronet-linux-mipsle_musl.a", "3a9357c2482097746ccbcc7fe2b929ee2d6741f3b09359a1d6f5cc4d2147b59e"),
+    ("libcronet-linux-mipsle.so", "23410260427e84a6aafa91242886a95c683dfcbced14dfc6b9292be73f5a5fff"),
+    ("libcronet-linux-mipsle_musl.a", "3b87dd49d85712313089f1dd4d747fbd4954c12f70d323b436f7b5a8b5dafb46"),
     ("libcronet-linux-mipsle_musl.link-flags.txt", "7c4f3c9ad180baeaf47dc3f42d868f648bf93749e28a235ffc3981cc08379e75"),
-    ("libcronet-linux-riscv64.a", "21c84da1384d5a047013ab2a02e60d61d87cfa666c00e6968100e85299aaf471"),
+    ("libcronet-linux-riscv64.a", "053174c3cd4644cc66a7ef9741a92d05921f9979294c0703701c9f930192cf6c"),
     ("libcronet-linux-riscv64.link-flags.txt", "eb76fb6666e3939472c0bc30d26186496f40e1e722f4ba4f971315cefa7005a3"),
-    ("libcronet-linux-riscv64.so", "7e6cede91829a868753a8018963b5090ccd8a76c90333fff2da76b84ba944826"),
-    ("libcronet-linux-riscv64_musl.a", "f3da36042182bb7ddce627b836ffb2823f1ce23a76b230c81359daca30573a73"),
+    ("libcronet-linux-riscv64.so", "ffd9eff98dc70fc3d425b94f15d17cfb05145b1a965631491321b1f86c1ffe23"),
+    ("libcronet-linux-riscv64_musl.a", "f7c2a710399f8a561bc2bddca27fd43a0d45b7e54a6c93ae9bcac8a5a0830346"),
     ("libcronet-linux-riscv64_musl.link-flags.txt", "6a314d8af0d1f1512f0bb9227c8071e5e28c5b1dc8af57b6d7382edc52525e9f"),
-    ("libcronet-tvos-amd64_simulator.a", "250fbe5134fdd684196436472dc1ffb52217fe3897aab7d54ad93e29ea47d121"),
-    ("libcronet-tvos-arm64.a", "79ee7beb3c11ffa44f9d9eb445947263feae5b1ebf99090bd0d6779500c107ee"),
-    ("libcronet-tvos-arm64_simulator.a", "a911824e12eecf7d514b7b697e7f3bdcc9390ff05131b9bff9fd79191ef1e076"),
-    ("libcronet-windows-amd64.dll", "9b42707fe83c8d58665e120f8f94f8bc16dadf2bd3b5a5bb228719f074181161"),
-    ("libcronet-windows-amd64.lib", "4e1d00228c71976fa2b74fea402712de16aaf7af52bb6511c389c7e4c8fb9db1"),
-    ("libcronet-windows-amd64.link-flags.txt", "5d75a21440c384731856c6226936f931c5dc47d26e94df5c907e77531ea383eb"),
-    ("libcronet-windows-amd64_md.dll", "09542ec60e059443a5236704b768ca962cadb4506782468be226b058906fb67d"),
-    ("libcronet-windows-amd64_md.lib", "53196dba93d3f7309f9dd1a09053a10d04909c25b9349e7209f33850fa50e455"),
-    ("libcronet-windows-amd64_md.link-flags.txt", "8c1d69cc91de13a5f7e737bedeaee89f6dbcdd918001a35aea48d3bb253edb5c"),
-    ("libcronet-windows-arm64.dll", "52a6e102dd3c6fd76c598ae26984f2f7b7c49c0d22eeee46e981bfdd66f64fbf"),
-    ("libcronet-windows-arm64.lib", "0d1c1e216a83ab83bb87cc4c11c5c73f10a7d90da6a1d86adad235d633f79a46"),
-    ("libcronet-windows-arm64.link-flags.txt", "5d75a21440c384731856c6226936f931c5dc47d26e94df5c907e77531ea383eb"),
-    ("libcronet-windows-arm64_md.dll", "53ff4b83e37f7233bd6ab101ac4c391ee9475d210e19dd66a311a6a2c54655bc"),
-    ("libcronet-windows-arm64_md.lib", "8925d2055ce0f7d28aa4b47f326cd79ebbc8580427434e1c8336d2f3e813a0eb"),
-    ("libcronet-windows-arm64_md.link-flags.txt", "8c1d69cc91de13a5f7e737bedeaee89f6dbcdd918001a35aea48d3bb253edb5c"),
+    ("libcronet-tvos-amd64_simulator.a", "0b68b67817e1a7b73f6f5f127448610b2ecafba53e4d1c573f6d5e35eb936c19"),
+    ("libcronet-tvos-arm64.a", "77105e2c081195f9eda140b4791091b6ae1263f9056e0d1ca936c0ed0c459db2"),
+    ("libcronet-tvos-arm64_simulator.a", "1dce25ed61503ce289408a41a81fc34397dfb757c9e75c345c58814529d8107c"),
+    ("libcronet-windows-amd64.dll", "ec80234fcef453bbbedf826da2d906b5a5d65a0a53de08164577fb64cdf074fe"),
+    ("libcronet-windows-amd64.lib", "018b05fd8c774268d75a89b670137b11c357de2a8b8fb4da8dc6c06729382976"),
+    ("libcronet-windows-amd64.link-flags.txt", "e186384087ef385a1038abfecc8585d1f6ab7f9160d341ec73b272a5ce53d6d0"),
+    ("libcronet-windows-amd64_md.dll", "a3f874828f12d75484effc3db2fe5e5423d4237620c3a2db1c322d5716e1b235"),
+    ("libcronet-windows-amd64_md.lib", "6f8d002fd8387909d1738d8d963c047e7040f1f6591cf7ef7722990491d58e5e"),
+    ("libcronet-windows-amd64_md.link-flags.txt", "5e66d459cabf06246fbdc1561bf1d6e04ccf34ed91a30dabfc25f7cd39a03334"),
+    ("libcronet-windows-arm64.dll", "0b84a8cb62f050fe8884c0466e3226058519a4c94727c20e42515314b9f05b04"),
+    ("libcronet-windows-arm64.lib", "1717aa3c4883a4c58ca5e271bb22e5596e466b8cd1b4869d5e36d4d2eee1a5f5"),
+    ("libcronet-windows-arm64.link-flags.txt", "e186384087ef385a1038abfecc8585d1f6ab7f9160d341ec73b272a5ce53d6d0"),
+    ("libcronet-windows-arm64_md.dll", "6929a88656585a885e5b44c57c8ff9968936cf9982275dbd8e7d1cbcf18ce7f5"),
+    ("libcronet-windows-arm64_md.lib", "97ee59f6ac111113689fbf4ccba016b5645458074b43c54a031ebf5323c5d954"),
+    ("libcronet-windows-arm64_md.link-flags.txt", "5e66d459cabf06246fbdc1561bf1d6e04ccf34ed91a30dabfc25f7cd39a03334"),
 ]; // keep sorted by name
 
 fn main() {
@@ -234,7 +235,7 @@ fn maybe_download(static_link: bool) -> Option<PathBuf> {
 fn download_asset(asset: &str, checksum_env: &str) -> PathBuf {
     use std::io::Read;
 
-    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "static-20261116.1".to_string());
+    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "chromium-154.0.8037.49-1".to_string());
 
     // Determine the expected checksum: pinned table first, env override second.
     let expected = expected_sha(asset)

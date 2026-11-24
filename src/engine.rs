@@ -127,7 +127,9 @@ impl Engine {
     /// Set a custom UDP dialer callback.
     pub fn set_udp_dialer(&mut self, _dialer: Option<UdpDialer>) {
         match _dialer {
-            None => unsafe { sys::Cronet_Engine_SetUdpDialer(self.raw, None, std::ptr::null_mut(), None) },
+            None => unsafe {
+                sys::Cronet_Engine_SetUdpDialer(self.raw, None, std::ptr::null_mut(), None)
+            },
             Some(_d) => {
                 log::warn!("SetUdpDialer: not fully implemented in purego mode yet");
             }
@@ -171,6 +173,7 @@ mod tests {
     #[ignore = "requires libcronet shared library"]
     fn test_create_engine() {
         let engine = Engine::new();
-        assert!(engine.raw.0 != 0);
+        assert_ne!(engine.raw.0, 0);
+        assert_eq!(engine.version(), "154.0.8037.49");
     }
 }

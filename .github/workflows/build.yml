@@ -22,7 +22,7 @@ concurrency:
 env:
   RELEASE_ORG: rust-proxy
   RELEASE_REPO: cronet-binaries
-  RELEASE_TAG: latest
+  RELEASE_TAG: chromium-154.0.8037.49-1
   # Default: the linker searches for `libcronet.a`.
   # We rename the downloaded asset to match.
   CRONET_STATIC_NAME: cronet
@@ -96,6 +96,17 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/lib
         run: |
           cargo test --target ${{ matrix.rust_target }}
+
+      - name: Check dynamic library ABI and retry
+        if: matrix.rust_target == 'x86_64-unknown-linux-gnu'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRONET_143_LIBRARY: ${{ github.workspace }}/lib/cronet-143.so
+          CRONET_154_LIBRARY: ${{ github.workspace }}/lib/${{ env.ASSET }}
+        run: |
+          gh release download static-20261116.1 --repo rust-proxy/cronet-binaries \
+            --pattern libcronet-linux-amd64.so --output "$CRONET_143_LIBRARY"
+          cargo test --locked -p cronet-sys --test dynamic_version -- --ignored
 
   #############################################################################
   # Android — static-link mode (.a downloaded + NDK)

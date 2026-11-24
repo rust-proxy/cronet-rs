@@ -38,7 +38,8 @@ pub unsafe fn load_library(_path: &str) -> Result<(), Box<dyn std::error::Error>
 mod ffi {
     use super::super::{
         RawBidirectionalStream, RawBidirectionalStreamCallback, RawBidirectionalStreamHeaderArray,
-        RawCertVerifier, RawDialer, RawEngine, RawEngineParams, RawStreamEngine, RawUdpDialer, RawUdpSocketClose,
+        RawCertVerifier, RawDialer, RawEngine, RawEngineParams, RawStreamEngine, RawUdpDialer,
+        RawUdpSocketClose,
     };
 
     unsafe extern "C" {

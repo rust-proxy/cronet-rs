@@ -27,7 +27,8 @@ static LIB: OnceLock<Library> = OnceLock::new();
 ///
 /// # Safety
 ///
-/// Calling this twice will return an error. Only one library can be loaded.
+/// Use a trusted SagerNet Cronet library. A failed load can be retried.
+/// After a successful load the library stays active for the process lifetime.
 pub unsafe fn load_library(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let p = Path::new(path);
     let resolved = if p.is_dir() {
@@ -56,7 +57,9 @@ pub unsafe fn load_library(path: &str) -> Result<(), Box<dyn std::error::Error>>
     };
     destroy(engine);
     if actual != "154.0.8037.49" {
-        return Err(format!("incompatible Cronet {actual}, expected SagerNet 154.0.8037.49").into());
+        return Err(
+            format!("incompatible Cronet {actual}, expected SagerNet 154.0.8037.49").into(),
+        );
     }
     LIB.set(lib).map_err(|_| "library already loaded".into())
 }
@@ -289,7 +292,19 @@ pub unsafe fn Cronet_Engine_SetUdpDialer(
     context: *mut std::ffi::c_void,
     on_close: Option<super::RawUdpSocketClose>,
 ) {
-    ffi_call!(b"Cronet_Engine_SetUdpDialer", unsafe extern "C" fn(super::RawEngine, Option<super::RawUdpDialer>, *mut std::ffi::c_void, Option<super::RawUdpSocketClose>), engine, callback, context, on_close)
+    ffi_call!(
+        b"Cronet_Engine_SetUdpDialer",
+        unsafe extern "C" fn(
+            super::RawEngine,
+            Option<super::RawUdpDialer>,
+            *mut std::ffi::c_void,
+            Option<super::RawUdpSocketClose>,
+        ),
+        engine,
+        callback,
+        context,
+        on_close
+    )
 }
 
 // ---------------------------------------------------------------------------

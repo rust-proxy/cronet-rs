@@ -112,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn udp_transfers_a_connected_fd_and_reports_its_local_endpoint() -> io::Result<()> {
+    fn callbacks_transfer_connected_fds_and_report_udp_local_endpoint() -> io::Result<()> {
         let mut context = Box::new(DialerContext(Arc::new(LoopbackDialer)));
         let ctx = std::ptr::from_mut(&mut *context).cast();
         for ip in [c"127.0.0.1", c"::1"] {
@@ -153,6 +153,10 @@ mod tests {
             );
         }
         assert_eq!(tcp(ctx, c"invalid".as_ptr(), 443), -4isize);
+        let denied = dial(ctx, c"127.0.0.1".as_ptr(), 443, |_, _| {
+            Err(io::ErrorKind::PermissionDenied.into())
+        });
+        assert_eq!(denied, -10isize);
         Ok(())
     }
 }
