@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_CRONET_NATIVE_INCLUDE_CRONET_C_H_
 #define COMPONENTS_CRONET_NATIVE_INCLUDE_CRONET_C_H_
 
+#include <stdint.h>
+
 #include "cronet_export.h"
 
 // Cronet public C API is generated from cronet.idl
@@ -50,9 +52,9 @@ CRONET_EXPORT void* Cronet_CreateCertVerifierWithRootCerts(
 //   -104: ERR_CONNECTION_FAILED
 //   -109: ERR_ADDRESS_UNREACHABLE
 //   -118: ERR_CONNECTION_TIMED_OUT
-typedef int (*Cronet_DialerFunc)(void* context,
-                                 const char* address,
-                                 uint16_t port);
+typedef intptr_t (*Cronet_DialerFunc)(void* context,
+                                      const char* address,
+                                      uint16_t port);
 
 // Sets a custom dialer for TCP connections.
 // When set, the engine will use this callback to establish TCP connections
@@ -69,19 +71,24 @@ CRONET_EXPORT void Cronet_Engine_SetDialer(Cronet_EnginePtr engine,
 // context: User-provided context pointer passed to Cronet_Engine_SetUdpDialer.
 // address: IP address string (e.g. "1.2.3.4" or "::1").
 // port: Port number.
-// out_local_address: Output buffer for local IP address (caller provides buffer,
+// out_local_address: Output buffer for local IP address (caller provides
+// buffer,
 //                    should be at least 46 bytes for INET6_ADDRSTRLEN).
 // out_local_port: Output pointer for local port number.
+// out_socket_id: Opaque identifier passed to on_close; zero skips notification.
 // Returns: socket fd on success, negative net error code on failure.
 // The returned socket can be:
 //   - AF_INET/AF_INET6 SOCK_DGRAM: Standard UDP socket
 //   - AF_UNIX SOCK_DGRAM: Unix domain datagram socket (Unix/macOS/Linux)
 //   - AF_UNIX SOCK_STREAM: Unix domain stream socket (Windows, with framing)
-typedef int (*Cronet_UdpDialerFunc)(void* context,
-                                    const char* address,
-                                    uint16_t port,
-                                    char* out_local_address,
-                                    uint16_t* out_local_port);
+typedef intptr_t (*Cronet_UdpDialerFunc)(void* context,
+                                         const char* address,
+                                         uint16_t port,
+                                         char* out_local_address,
+                                         uint16_t* out_local_port,
+                                         uint64_t* out_socket_id);
+
+typedef void (*Cronet_UdpSocketCloseFunc)(uint64_t socket_id);
 
 // Sets a custom dialer for UDP sockets.
 // When set, the engine will use this callback to create UDP sockets
@@ -90,15 +97,18 @@ typedef int (*Cronet_UdpDialerFunc)(void* context,
 // dialer: The callback function to use for UDP sockets, or nullptr to
 //         disable custom UDP dialing.
 // context: User-provided context pointer that will be passed to the dialer.
-CRONET_EXPORT void Cronet_Engine_SetUdpDialer(Cronet_EnginePtr engine,
-                                              Cronet_UdpDialerFunc dialer,
-                                              void* context);
+CRONET_EXPORT void Cronet_Engine_SetUdpDialer(
+    Cronet_EnginePtr engine,
+    Cronet_UdpDialerFunc dialer,
+    void* context,
+    Cronet_UdpSocketCloseFunc on_close);
 
 // Closes all connections managed by the engine's network session.
 // This includes socket pools, HTTP stream pool, SPDY session pool,
 // and QUIC session pool. Useful for releasing connection-related memory
 // or speeding up engine shutdown.
 // Must be called after Cronet_Engine_StartWithParams().
+// Calls from Cronet's network thread schedule the close asynchronously.
 CRONET_EXPORT void Cronet_Engine_CloseAllConnections(Cronet_EnginePtr engine);
 
 #ifdef __cplusplus

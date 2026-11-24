@@ -5,6 +5,8 @@ Low-level FFI bindings to Chromium **Cronet** (`libcronet`), as used by
 layer under [`cronet-rs`](https://crates.io/crates/cronet-rs); most users want
 the high-level crate.
 
+These bindings use the SagerNet Chromium 154.0.8037.49 dialer ABI. Load a matching shared library or supply the matching static archive. Dynamic loading reports incompatible versions before registering callbacks.
+
 The vendored C headers (the ABI source of truth) live in [`include/`](include/).
 
 ## Backends
