@@ -1,14 +1,24 @@
-//! Linux socket ownership at the Cronet C dialer boundary.
+//! Socket ownership at the Cronet C dialer boundary.
+//!
+//! Cronet can delegate physical TCP and UDP socket creation to the embedder.
+//! That hook is the only way to apply per-socket routing options (for example
+//! bind an outgoing socket to a physical interface) before Cronet connects it.
+//! The callback ABI is platform-neutral; only the raw handle representation
+//! differs between Unix file descriptors and Windows `SOCKET`s.
 
 use std::{
     ffi::{CStr, c_char, c_void},
     fmt::Debug,
     io,
     net::{SocketAddr, TcpStream, UdpSocket},
-    os::fd::IntoRawFd,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::Arc,
 };
+
+#[cfg(unix)]
+use std::os::fd::IntoRawFd;
+#[cfg(windows)]
+use std::os::windows::io::IntoRawSocket;
 
 /// Implementations return connected sockets and may be called on Cronet's network thread.
 /// TCP connects must have a deadline. Cronet assumes ownership on success.
@@ -20,11 +30,25 @@ pub trait SocketDialer: Debug + Send + Sync {
 #[derive(Debug)]
 pub(crate) struct DialerContext(pub(crate) Arc<dyn SocketDialer>);
 
+/// Transfer ownership of a connected socket to Cronet as a raw handle.
+///
+/// The value must fit in `intptr_t` on the target ABI: `RawFd` is an `i32`,
+/// while `RawSocket` is a `u64` that is returned as an `isize` on Windows.
+#[cfg(unix)]
+fn into_raw_handle<T: IntoRawFd>(socket: T) -> isize {
+    socket.into_raw_fd() as isize
+}
+
+#[cfg(windows)]
+fn into_raw_handle<T: IntoRawSocket>(socket: T) -> isize {
+    socket.into_raw_socket() as isize
+}
+
 fn dial(
     context: *mut c_void,
     address: *const c_char,
     port: u16,
-    connect: impl FnOnce(&dyn SocketDialer, SocketAddr) -> io::Result<i32>,
+    connect: impl FnOnce(&dyn SocketDialer, SocketAddr) -> io::Result<isize>,
 ) -> isize {
     // Both pointers come from Cronet. The engine owns the context, and the
     // address is a NUL-terminated IP literal valid for this callback.
@@ -39,7 +63,7 @@ fn dial(
             .and_then(|value| value.parse().ok());
         let Some(ip) = ip else { return -4 };
         match connect(&*dialer.0, SocketAddr::new(ip, port)) {
-            Ok(fd) => fd as isize,
+            Ok(handle) => handle,
             Err(err) => {
                 log::debug!("Cronet socket dial failed: {err}");
                 match err.kind() {
@@ -58,7 +82,7 @@ fn dial(
 
 pub(crate) extern "C" fn tcp(ctx: *mut c_void, ip: *const c_char, port: u16) -> isize {
     dial(ctx, ip, port, |dialer, peer| {
-        Ok(dialer.connect_tcp(peer)?.into_raw_fd())
+        Ok(into_raw_handle(dialer.connect_tcp(peer)?))
     })
 }
 
@@ -83,10 +107,10 @@ pub(crate) extern "C" fn udp(
             std::ptr::copy_nonoverlapping(text.as_ptr(), local_ip.cast(), text.len());
             *local_ip.add(text.len()) = 0;
             *local_port = local.port();
-            // Cronet owns the fd; Rust needs no separate close notification.
+            // Cronet owns the socket; Rust needs no separate close notification.
             *socket_id = 0;
         }
-        Ok(socket.into_raw_fd())
+        Ok(into_raw_handle(socket))
     })
 }
 
@@ -94,7 +118,38 @@ pub(crate) extern "C" fn udp(
 mod tests {
     use super::*;
     use std::net::TcpListener;
-    use std::os::fd::FromRawFd;
+
+    #[cfg(unix)]
+    mod raw {
+        use std::{
+            net::{TcpStream, UdpSocket},
+            os::fd::{FromRawFd, RawFd},
+        };
+
+        pub fn tcp(handle: isize) -> TcpStream {
+            unsafe { TcpStream::from_raw_fd(handle as RawFd) }
+        }
+
+        pub fn udp(handle: isize) -> UdpSocket {
+            unsafe { UdpSocket::from_raw_fd(handle as RawFd) }
+        }
+    }
+
+    #[cfg(windows)]
+    mod raw {
+        use std::{
+            net::{TcpStream, UdpSocket},
+            os::windows::io::{FromRawSocket, RawSocket},
+        };
+
+        pub fn tcp(handle: isize) -> TcpStream {
+            unsafe { TcpStream::from_raw_socket(handle as RawSocket) }
+        }
+
+        pub fn udp(handle: isize) -> UdpSocket {
+            unsafe { UdpSocket::from_raw_socket(handle as RawSocket) }
+        }
+    }
 
     #[derive(Debug)]
     struct LoopbackDialer;
@@ -112,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn callbacks_transfer_connected_fds_and_report_udp_local_endpoint() -> io::Result<()> {
+    fn callbacks_transfer_connected_handles_and_report_udp_local_endpoint() -> io::Result<()> {
         let mut context = Box::new(DialerContext(Arc::new(LoopbackDialer)));
         let ctx = std::ptr::from_mut(&mut *context).cast();
         for ip in [c"127.0.0.1", c"::1"] {
@@ -121,7 +176,7 @@ mod tests {
             let mut local_ip = [0; 46];
             let mut port = 0;
             let mut socket_id = u64::MAX;
-            let fd = udp(
+            let handle = udp(
                 ctx,
                 ip.as_ptr(),
                 peer.local_addr()?.port(),
@@ -129,16 +184,16 @@ mod tests {
                 &mut port,
                 &mut socket_id,
             );
-            assert!(fd >= 0);
+            assert!(handle >= 0);
             assert_eq!(socket_id, 0);
-            let socket = unsafe { UdpSocket::from_raw_fd(i32::try_from(fd).unwrap()) };
+            let socket = raw::udp(handle);
             assert_eq!(unsafe { CStr::from_ptr(local_ip.as_ptr()) }, ip);
             assert_eq!(socket.local_addr()?.port(), port);
             assert_eq!(socket.peer_addr()?, peer.local_addr()?);
             let listener = TcpListener::bind(address)?;
-            let fd = tcp(ctx, ip.as_ptr(), listener.local_addr()?.port());
-            assert!(fd >= 0);
-            let stream = unsafe { TcpStream::from_raw_fd(i32::try_from(fd).unwrap()) };
+            let handle = tcp(ctx, ip.as_ptr(), listener.local_addr()?.port());
+            assert!(handle >= 0);
+            let stream = raw::tcp(handle);
             assert_eq!(stream.peer_addr()?, listener.local_addr()?);
             assert_eq!(
                 udp(

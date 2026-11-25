@@ -35,6 +35,15 @@
 //! **macOS/iOS always link statically** — dlopen is not available.
 //! **Android should prefer `static-link`** for stable production builds.
 //!
+//! ## Custom socket dialer
+//!
+//! [`socket_dialer::SocketDialer`] lets the embedder create every physical TCP
+//! and UDP socket itself, for example to bind Cronet's connections to a
+//! physical interface before connecting. The hook is available on Unix and
+//! Windows and must be installed with
+//! [`NaiveClient::start_with_dialer`](crate::naive_client::NaiveClient::start_with_dialer)
+//! before the engine starts.
+//!
 //! With `download`, the native library is fetched at build time (no manual
 //! setup). In dynamic mode, load it via
 //! [`sys::load_downloaded_library`](crate::sys::load_downloaded_library)
@@ -97,13 +106,12 @@
 pub mod bidirectional;
 pub mod dns;
 pub mod engine;
-#[cfg(target_os = "linux")]
-pub mod linux_dialer;
 pub mod engine_params;
 pub mod error;
 pub mod naive_client;
 pub mod naive_conn;
 pub mod padding;
+pub mod socket_dialer;
 pub mod sys;
 
 // Re-export main public types at the crate root.

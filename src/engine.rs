@@ -24,8 +24,7 @@ pub struct Engine {
     pub(crate) raw: sys::RawEngine,
     started: bool,
     destroyed: bool,
-    #[cfg(target_os = "linux")]
-    dialer_context: Option<Box<crate::linux_dialer::DialerContext>>,
+    dialer_context: Option<Box<crate::socket_dialer::DialerContext>>,
 }
 
 impl Engine {
@@ -36,22 +35,20 @@ impl Engine {
             raw,
             started: false,
             destroyed: false,
-            #[cfg(target_os = "linux")]
             dialer_context: None,
         }
     }
 
-    #[cfg(target_os = "linux")]
     pub(crate) fn install_socket_dialer(
         &mut self,
-        dialer: std::sync::Arc<dyn crate::linux_dialer::SocketDialer>,
+        dialer: std::sync::Arc<dyn crate::socket_dialer::SocketDialer>,
     ) {
         // The allocation stays at a fixed address until after native engine destruction.
-        let mut context = Box::new(crate::linux_dialer::DialerContext(dialer));
+        let mut context = Box::new(crate::socket_dialer::DialerContext(dialer));
         let ptr = std::ptr::from_mut(&mut *context).cast();
         unsafe {
-            sys::Cronet_Engine_SetDialer(self.raw, Some(crate::linux_dialer::tcp), ptr);
-            sys::Cronet_Engine_SetUdpDialer(self.raw, Some(crate::linux_dialer::udp), ptr, None);
+            sys::Cronet_Engine_SetDialer(self.raw, Some(crate::socket_dialer::tcp), ptr);
+            sys::Cronet_Engine_SetUdpDialer(self.raw, Some(crate::socket_dialer::udp), ptr, None);
         }
         self.dialer_context = Some(context);
     }

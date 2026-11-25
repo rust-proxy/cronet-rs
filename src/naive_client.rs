@@ -147,8 +147,13 @@ impl NaiveClient {
     }
 
     /// Start using a single socket policy for all physical connections in this engine.
-    #[cfg(target_os = "linux")]
-    pub fn start_with_dialer(&mut self, dialer: Arc<dyn crate::linux_dialer::SocketDialer>) -> Result<(), CronetError> {
+    ///
+    /// The dialer is invoked on Cronet's network thread and must return
+    /// connected sockets. Cronet assumes ownership of each returned handle.
+    pub fn start_with_dialer(
+        &mut self,
+        dialer: Arc<dyn crate::socket_dialer::SocketDialer>,
+    ) -> Result<(), CronetError> {
         self.start_inner(|engine| engine.install_socket_dialer(dialer))
     }
 
