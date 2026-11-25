@@ -56,13 +56,13 @@ Three options, in order of manual effort:
 |---|---|
 | `CRONET_LIB_DIR` | Directory containing the static archive and Windows link flags. |
 | `CRONET_STATIC_NAME` | Static lib stem, default `cronet` → `libcronet.a`. |
-| `CRONET_DOWNLOAD_TAG` | Release tag to fetch, default `chromium-154.0.8037.49-1`. |
+| `CRONET_DOWNLOAD_TAG` | Release tag to fetch, default `v154.0.8037.49`. |
 | `CRONET_DOWNLOAD_ASSET` | Override the auto-detected asset file name. |
 | `CRONET_DOWNLOAD_SHA256` | Expected SHA-256 for a custom/unpinned asset. |
 | `CRONET_DOWNLOAD_LINK_FLAGS_SHA256` | Expected SHA-256 for custom/unpinned Windows link flags. |
 | `CRONET_DOWNLOAD_DIR` | Cache directory for downloads, default `OUT_DIR`. |
 
-Downloads use the fixed `chromium-154.0.8037.49-1` release and pinned SHA-256 checksums,
+Downloads use the fixed `v154.0.8037.49` release and pinned SHA-256 checksums,
 including the Windows linker metadata. The release includes Intel and ARM64 iOS
 simulator archives. For the macOS archives, set a deployment target of macOS
 13.0 or newer. Cached files are verified before reuse.

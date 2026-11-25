@@ -22,7 +22,7 @@ concurrency:
 env:
   RELEASE_ORG: rust-proxy
   RELEASE_REPO: cronet-binaries
-  RELEASE_TAG: chromium-154.0.8037.49-1
+  RELEASE_TAG: v154.0.8037.49
   # Default: the linker searches for `libcronet.a`.
   # We rename the downloaded asset to match.
   CRONET_STATIC_NAME: cronet

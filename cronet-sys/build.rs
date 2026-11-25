@@ -17,7 +17,7 @@
 //!
 //! - `CRONET_LIB_DIR`         — dir containing `libcronet.a` (static mode).
 //! - `CRONET_STATIC_NAME`     — static lib stem (default `cronet`).
-//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `chromium-154.0.8037.49-1`).
+//! - `CRONET_DOWNLOAD_TAG`    — release tag to fetch (default `v154.0.8037.49`).
 //! - `CRONET_DOWNLOAD_ASSET`  — override the auto-detected asset file name.
 //! - `CRONET_DOWNLOAD_SHA256` — expected SHA-256 for a custom/unpinned asset.
 //! - `CRONET_DOWNLOAD_LINK_FLAGS_SHA256` — expected SHA-256 for Windows link flags.
@@ -32,7 +32,7 @@ use std::path::PathBuf;
 #[cfg(any(feature = "download", feature = "download-static"))]
 const RELEASE_BASE: &str = "https://github.com/rust-proxy/cronet-binaries/releases/download";
 
-/// Pinned SHA-256 checksums for the fixed `chromium-154.0.8037.49-1` release.
+/// Pinned SHA-256 checksums for the fixed `v154.0.8037.49` release.
 /// Update the release tag and this table together when adopting a new build.
 #[cfg(any(feature = "download", feature = "download-static"))]
 #[rustfmt::skip]
@@ -94,10 +94,10 @@ const CHECKSUMS: &[(&str, &str)] = &[
     ("libcronet-windows-amd64_md.lib", "6f8d002fd8387909d1738d8d963c047e7040f1f6591cf7ef7722990491d58e5e"),
     ("libcronet-windows-amd64_md.link-flags.txt", "5e66d459cabf06246fbdc1561bf1d6e04ccf34ed91a30dabfc25f7cd39a03334"),
     ("libcronet-windows-arm64.dll", "0b84a8cb62f050fe8884c0466e3226058519a4c94727c20e42515314b9f05b04"),
-    ("libcronet-windows-arm64.lib", "1717aa3c4883a4c58ca5e271bb22e5596e466b8cd1b4869d5e36d4d2eee1a5f5"),
+    ("libcronet-windows-arm64.lib", "ef3b20064c4e8b22e69681b60c83ecfa4eb738da53c88c28b30e2f55af3ba1e3"),
     ("libcronet-windows-arm64.link-flags.txt", "e186384087ef385a1038abfecc8585d1f6ab7f9160d341ec73b272a5ce53d6d0"),
     ("libcronet-windows-arm64_md.dll", "6929a88656585a885e5b44c57c8ff9968936cf9982275dbd8e7d1cbcf18ce7f5"),
-    ("libcronet-windows-arm64_md.lib", "97ee59f6ac111113689fbf4ccba016b5645458074b43c54a031ebf5323c5d954"),
+    ("libcronet-windows-arm64_md.lib", "97a8ca210341cbb439d04c514bcfdf9c0f591fdeaca7b3c925173897009d09cd"),
     ("libcronet-windows-arm64_md.link-flags.txt", "5e66d459cabf06246fbdc1561bf1d6e04ccf34ed91a30dabfc25f7cd39a03334"),
 ]; // keep sorted by name
 
@@ -235,7 +235,7 @@ fn maybe_download(static_link: bool) -> Option<PathBuf> {
 fn download_asset(asset: &str, checksum_env: &str) -> PathBuf {
     use std::io::Read;
 
-    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "chromium-154.0.8037.49-1".to_string());
+    let tag = env::var("CRONET_DOWNLOAD_TAG").unwrap_or_else(|_| "v154.0.8037.49".to_string());
 
     // Determine the expected checksum: pinned table first, env override second.
     let expected = expected_sha(asset)
