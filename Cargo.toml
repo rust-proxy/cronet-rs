@@ -28,14 +28,15 @@ dotenvy = "0.15"
 [features]
 default = []
 
-# Dynamic mode: load libcronet at runtime via dlopen/LoadLibrary
-# Works on Linux, Windows, Android. NOT supported on macOS/iOS.
+# Dynamic mode: load libcronet at runtime via dlopen/LoadLibrary.
+# Wins over `static-link` on every target. Works on Linux, Windows, Android, and
+# on macOS when a shared library is supplied; iOS/tvOS have no shared build.
 dynamic = ["cronet-sys/dynamic"]
 
 # Static link mode: link libcronet.a at compile time.
 #
-# Required on macOS, iOS, and recommended on Android.
-# Also works on Linux and Windows.
+# The default on Apple targets, recommended on Android, and available on Linux
+# and Windows. Ignored when `dynamic` is also enabled.
 #
 # Usage:
 #   CRONET_LIB_DIR=/path/to/libdir cargo build --no-default-features --features static-link
@@ -45,7 +46,7 @@ dynamic = ["cronet-sys/dynamic"]
 static-link = ["cronet-sys/static-link"]
 
 # Convenience alias: use static-link on Android targets.
-# Same as `static-link`.
+# Same as `static-link`; `dynamic` still wins when both are enabled.
 android-static = ["static-link"]
 
 # Opt-in: have cronet-sys's build.rs download + checksum a prebuilt libcronet

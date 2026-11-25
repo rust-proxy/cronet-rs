@@ -11,8 +11,10 @@ links = "cronet"
 
 [lib]
 
-[target.'cfg(not(target_vendor = "apple"))'.dependencies]
-# Dynamic mode: dlopen/LoadLibrary at runtime.
+[dependencies]
+# Dynamic mode: dlopen/LoadLibrary at runtime. Kept target-independent so every
+# target compiles the same dynamic backend; Apple builds only use it when the
+# `dynamic` feature is enabled.
 libloading = "0.8"
 
 # Build-time downloader deps — only pulled in when the `download` feature is on.
@@ -23,7 +25,8 @@ sha2 = { version = "0.10", optional = true }
 [features]
 default = []
 
-# Load libcronet at runtime via dlopen/LoadLibrary (Linux/Windows/Android).
+# Load libcronet at runtime via dlopen/LoadLibrary. Wins over `static-link` on
+# every target; Apple needs a user-supplied shared library for this.
 dynamic = []
 
 # Link libcronet at compile time (macOS/iOS/Android, also Linux/Windows).

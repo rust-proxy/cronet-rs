@@ -1,6 +1,9 @@
-/// Apple uses native archives. Android keeps an explicitly requested static backend.
-pub fn uses_static_link(vendor: &str, os: &str, dynamic: bool, static_link: bool) -> bool {
-    vendor == "apple" || (static_link && (os == "android" || !dynamic))
+/// Runtime loading takes precedence over static linking on every target, so the
+/// same feature combination always selects the same backend. Apple targets fall
+/// back to the archive only when dynamic mode is not requested, because no
+/// runnable shared Cronet build exists for them by default.
+pub fn uses_static_link(vendor: &str, dynamic: bool, static_link: bool) -> bool {
+    !dynamic && (vendor == "apple" || static_link)
 }
 
 /// The static downloader is deliberately independent of backend selection.
@@ -119,7 +122,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn backend_and_static_download_follow_target_feature_union() {
+    fn dynamic_wins_over_static_and_download_follows_the_backend() {
         for (vendor, os) in [
             ("pc", "windows"),
             ("unknown", "linux"),
@@ -127,23 +130,28 @@ mod tests {
             ("apple", "macos"),
             ("unknown", "android"),
         ] {
-            for (dynamic, static_link, desktop, android) in [
-                (false, false, false, false),
-                (true, false, false, false),
-                (false, true, true, true),
-                (true, true, false, true),
-            ] {
-                let expected = match (vendor, os) {
-                    ("apple", _) => true,
-                    (_, "android") => android,
-                    _ => desktop,
-                };
-                let selected = uses_static_link(vendor, os, dynamic, static_link);
+            let apple = vendor == "apple";
+
+            // The same feature combination selects the same backend everywhere:
+            // `dynamic` beats `static-link`, and no target adds a static request.
+            assert!(!uses_static_link(vendor, true, true), "{os}");
+            assert!(!uses_static_link(vendor, true, false), "{os}");
+
+            // Without dynamic mode, `static-link` selects the archive, and Apple
+            // falls back to it because it has no default shared library.
+            assert!(uses_static_link(vendor, false, true), "{os}");
+            assert_eq!(uses_static_link(vendor, false, false), apple, "{os}");
+
+            // Only the static backend may fetch a static archive.
+            for (dynamic, static_link) in
+                [(true, true), (true, false), (false, true), (false, false)]
+            {
+                let selected = uses_static_link(vendor, dynamic, static_link);
                 assert_eq!(
-                    selected, expected,
+                    download_enabled(false, true, selected),
+                    selected,
                     "{os}, dynamic={dynamic}, static-link={static_link}"
                 );
-                assert_eq!(download_enabled(false, true, selected), expected);
             }
         }
     }

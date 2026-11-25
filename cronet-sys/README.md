@@ -14,14 +14,17 @@ The vendored C headers (the ABI source of truth) live in [`include/`](include/).
 | Feature | Default | What it does |
 |---|---|---|
 | `dynamic` | ❌ | Resolve symbols at runtime via `dlopen`/`LoadLibrary` (`libloading`). |
-| `static-link` | ❌ | Link `libcronet.a` or MSVC `cronet.lib` at compile time. Required on macOS/iOS. |
+| `static-link` | ❌ | Link `libcronet.a` or MSVC `cronet.lib` at compile time. Default on Apple targets. |
 | `download-static` | ❌ | Download a verified archive only for the selected static backend. |
 | `download` | ❌ | Build script downloads a prebuilt `libcronet` for the target. |
 
-Desktop builds use runtime loading by default, including with `--no-default-features`.
-Enable `static-link` to embed Cronet. An explicit `dynamic` selects runtime loading
-on desktop even when `static-link` is enabled, so `download-static` skips the download.
-Apple targets always link statically. Android honors an explicit `static-link` even with `dynamic`.
+Backend selection is identical on every target: `dynamic` wins over `static-link`,
+and `download-static` only fetches an archive when the static backend is selected.
+Desktop and Android builds use runtime loading by default, including with
+`--no-default-features`; `static-link` embeds Cronet and is the default on Apple.
+Apple targets therefore switch to runtime loading only when `dynamic` is enabled,
+which requires a shared library: macOS can dlopen a user-supplied dylib, while
+iOS/tvOS have no shared Cronet build.
 For automatic static linking, use `--features static-link,download-static`.
 Linux archives match the target's glibc or musl ABI. Windows requires MSVC.
 Automatic downloads match Rust's CRT: the default uses the `/MD` archive and
@@ -47,7 +50,7 @@ Three options, in order of manual effort:
    (or Windows `cronet.lib` plus `link_flags.txt`) and build with
    `--features static-link`. Match the archive's `/MD` or `/MT` CRT to Rust on
    Windows. This bypasses automatic downloads.
-3. **System search path** — drop a loadable `libcronet.{so,dll}` somewhere the
+3. **System search path** — drop a loadable `libcronet.{so,dll,dylib}` somewhere the
    loader finds it and call `load_library("libcronet.so")` yourself (dynamic).
 
 ## Environment variables (build script)

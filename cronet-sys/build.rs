@@ -126,7 +126,6 @@ fn main() {
 
     let static_link = build_target::uses_static_link(
         &env::var("CARGO_CFG_TARGET_VENDOR").expect("Cargo sets the target vendor"),
-        &env::var("CARGO_CFG_TARGET_OS").expect("Cargo sets the target OS"),
         cfg!(feature = "dynamic"),
         cfg!(feature = "static-link"),
     );

@@ -11,15 +11,17 @@
 //!
 //! | Feature | Default | Platforms | Description |
 //! |---|---|---|---|
-//! | `dynamic` | ❌ | Linux, Windows, Android | Load `libcronet` at runtime via dlopen/LoadLibrary |
-//! | `static-link` | ❌ | macOS, iOS, Android, Linux, Windows | Link `libcronet.a` at compile time |
+//! | `dynamic` | ❌ | Linux, Windows, Android, macOS | Load `libcronet` at runtime via dlopen/LoadLibrary |
+//! | `static-link` | ❌ | macOS, iOS, Android, Linux, Windows | Link `libcronet.a` at compile time (default on Apple) |
 //! | `android-static` | ❌ | Android | Alias for `static-link` |
 //! | `download-static` | ❌ | static targets | Download and verify a static archive when the static backend is selected |
 //! | `download` | ❌ | all | Have `cronet-sys`'s build script download + SHA-256 verify a prebuilt `libcronet` for the target into `OUT_DIR` |
 //!
-//! Desktop builds load Cronet dynamically by default. Request `static-link` to embed it;
-//! explicitly enabling `dynamic` selects runtime loading even with `static-link`.
-//! Apple targets always link statically. On Android an explicit `static-link` wins.
+//! Desktop and Android builds load Cronet dynamically by default. Request `static-link` to
+//! embed it; `dynamic` wins over `static-link` on every target, so one feature combination
+//! always selects the same backend. Apple targets link the archive by default and load a
+//! shared library only with `dynamic`: macOS can dlopen a user-supplied dylib, while
+//! iOS/tvOS have no shared Cronet build.
 //! Linux archives must match the target libc (glibc or musl); Windows static
 //! linking requires MSVC and `cronet.lib` plus its generated `link_flags.txt`.
 //! Windows downloads select `/MD` for Rust's default CRT without extra flags,
@@ -27,12 +29,13 @@
 //! the application's CRT. Both variants statically link Cronet; `/MD` uses the
 //! MSVC runtime DLLs.
 //! `CRONET_LIB_DIR` bypasses downloading in static builds, including with `download-static`.
-//! On desktop, `download-static` alone keeps dynamic loading and skips downloading. The legacy
-//! `download` feature retains its download behavior for either backend.
+//! `download-static` only fetches an archive when the static backend is selected, so
+//! enabling `dynamic` always skips the download. The legacy `download` feature retains its
+//! download behavior for either backend.
 //! Downloads use the fixed `v154.0.8037.49` release with pinned SHA-256
 //! checksums. Cronet's private BoringSSL symbols are isolated from other TLS libraries.
 //!
-//! **macOS/iOS always link statically** — dlopen is not available.
+//! **Apple targets link statically by default**; `dynamic` there needs a shared library.
 //! **Android should prefer `static-link`** for stable production builds.
 //!
 //! ## Custom socket dialer
@@ -100,7 +103,7 @@
 //! client.close().unwrap();
 //! ```
 //!
-//! ## Quick Start (static mode, macOS/iOS)
+//! ## Quick Start (static mode, the Apple default)
 //!
 //! ```rust,no_run
 //! // Set: CRONET_LIB_DIR=/path/to/libcronet cargo build

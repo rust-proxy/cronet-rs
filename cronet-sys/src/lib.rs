@@ -1,15 +1,17 @@
 //! Raw FFI bindings for the Chromium Cronet C API (`libcronet`).
 //!
-//! Desktop targets load Cronet dynamically by default. Enable `static-link` to
-//! embed the library, or `dynamic` to select runtime loading when both are enabled.
-//! Apple targets use static linking. Android uses runtime loading unless
-//! `static-link` is enabled.
+//! `dynamic` takes precedence over `static-link` on every target, so one feature
+//! combination always selects the same backend. Desktop and Android targets load
+//! Cronet at runtime by default and link the archive only with `static-link`.
+//! Apple targets link the archive by default; enabling `dynamic` there switches to
+//! runtime loading, which requires a user-supplied shared library (no shared
+//! Cronet build is released for macOS, and iOS/tvOS support none at all).
 //!
 //! ## Obtaining the native library
 //!
 //! The native library is not vendored. Provide it one of three ways:
 //! - point `CRONET_LIB_DIR` at a directory containing it (static mode), or
-//! - place a loadable `libcronet.{so,dll}` on the system search path (dynamic
+//! - place a loadable `libcronet.{so,dll,dylib}` on the system search path (dynamic
 //!   mode), or
 //! - enable **`static-link,download-static`** for automatic static downloads, or
 //!   the legacy **`download`** feature for either backend, to fetch and checksum a
