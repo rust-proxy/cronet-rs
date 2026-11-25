@@ -49,6 +49,25 @@
 //! [`sys::load_downloaded_library`](crate::sys::load_downloaded_library)
 //! instead of passing an explicit path; in static mode it links automatically.
 //!
+//! ## Host resolver rules
+//!
+//! [`NaiveClientConfig::host_resolver_rules`](crate::naive_client::NaiveClientConfig::host_resolver_rules)
+//! maps the proxy server name to a fixed address (`MAP host ip`) while the
+//! name still drives SNI and certificate verification:
+//!
+//! ```rust,no_run
+//! use cronet_rs::naive_client::{NaiveClient, NaiveClientConfig};
+//!
+//! let client = NaiveClient::new(NaiveClientConfig {
+//!     server_address: "proxy.example.com:443".to_string(),
+//!     host_resolver_rules: Some("MAP proxy.example.com 203.0.113.7".to_string()),
+//!     ..Default::default()
+//! })?;
+//! # Ok::<(), cronet_rs::error::CronetError>(())
+//! ```
+//!
+//! Rules are ignored for network-bound contexts.
+//!
 //! ```toml
 //! [dependencies]
 //! cronet-rs = { version = "0.1", default-features = false, features = ["static-link"] }

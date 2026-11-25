@@ -66,6 +66,12 @@ pub struct NaiveClientConfig {
     pub ech_config_list: Option<Vec<u8>>,
     /// Server name to query for ECH configs.
     pub ech_query_server_name: Option<String>,
+    /// `HostResolverRules` override for the proxy server, e.g.
+    /// `MAP proxy.example.com 1.2.3.4`.
+    ///
+    /// Pins the dial address while `server_name` keeps driving SNI and
+    /// certificate verification.
+    pub host_resolver_rules: Option<String>,
 }
 
 impl Default for NaiveClientConfig {
@@ -85,6 +91,7 @@ impl Default for NaiveClientConfig {
             ech_enabled: false,
             ech_config_list: None,
             ech_query_server_name: None,
+            host_resolver_rules: None,
         }
     }
 }
@@ -115,6 +122,18 @@ impl NaiveClient {
     pub fn new(config: NaiveClientConfig) -> std::result::Result<Self, CronetError> {
         if config.server_address.is_empty() {
             return Err(CronetError::Config("server_address is required".into()));
+        }
+        if let Some(rules) = &config.host_resolver_rules {
+            if rules.trim().is_empty() {
+                return Err(CronetError::Config(
+                    "host_resolver_rules must not be empty".into(),
+                ));
+            }
+            if rules.contains('\0') {
+                return Err(CronetError::Config(
+                    "host_resolver_rules must not contain NUL".into(),
+                ));
+            }
         }
 
         let server_name = config
@@ -187,38 +206,9 @@ impl NaiveClient {
             params_builder = params_builder.http2(true);
         }
 
-        // Set experimental options for QUIC/H2 tuning
-        let mut exp_opts = Vec::new();
-        if self.config.quic_enabled {
-            let stream_win = if self.config.receive_window > 0 {
-                self.config.receive_window
-            } else {
-                8 * 1024 * 1024
-            };
-            let session_win = if self.config.quic_session_receive_window > 0 {
-                self.config.quic_session_receive_window
-            } else {
-                20 * 1024 * 1024
-            };
-            exp_opts.push(format!(
-                r#""QUIC":{{"connection_options":"{}","receive_stream_window_size":{},"session_max_reads":{}}}"#,
-                self.config.quic_congestion_control.as_str(),
-                stream_win,
-                session_win,
-            ));
-        } else {
-            let recv_win = if self.config.receive_window > 0 {
-                self.config.receive_window
-            } else {
-                128 * 1024 * 1024
-            };
-            let header_table_size = recv_win / 2;
-            exp_opts.push(format!(
-                r#""SPDY":{{"recv_window_size":{},"header_table_size":{}}}"#,
-                recv_win, header_table_size,
-            ));
-        }
-        let json = format!("{{{}}}", exp_opts.join(","));
+        // Experimental options carry the QUIC/H2 tuning and, when set, the
+        // host resolver rules that pin the proxy server address.
+        let json = experimental_options_json(&self.config);
         params_builder = params_builder.experimental_options(json);
 
         let mut params = params_builder.build()?;
@@ -326,6 +316,72 @@ impl Drop for NaiveClient {
     }
 }
 
+/// Build Cronet's experimental-options JSON: the QUIC/SPDY tuning block plus,
+/// when configured, `HostResolverRules`. That is Cronet's actual key; there is
+/// no `dns_config` variant.
+fn experimental_options_json(config: &NaiveClientConfig) -> String {
+    let mut exp_opts = Vec::new();
+    if config.quic_enabled {
+        let stream_win = if config.receive_window > 0 {
+            config.receive_window
+        } else {
+            8 * 1024 * 1024
+        };
+        let session_win = if config.quic_session_receive_window > 0 {
+            config.quic_session_receive_window
+        } else {
+            20 * 1024 * 1024
+        };
+        exp_opts.push(format!(
+            r#""QUIC":{{"connection_options":"{}","receive_stream_window_size":{},"session_max_reads":{}}}"#,
+            config.quic_congestion_control.as_str(),
+            stream_win,
+            session_win,
+        ));
+    } else {
+        let recv_win = if config.receive_window > 0 {
+            config.receive_window
+        } else {
+            128 * 1024 * 1024
+        };
+        let header_table_size = recv_win / 2;
+        exp_opts.push(format!(
+            r#""SPDY":{{"recv_window_size":{},"header_table_size":{}}}"#,
+            recv_win, header_table_size,
+        ));
+    }
+
+    if let Some(rules) = config.host_resolver_rules.as_deref() {
+        exp_opts.push(format!(
+            r#""HostResolverRules":{{"host_resolver_rules":{}}}"#,
+            json_quote(rules),
+        ));
+    }
+
+    format!("{{{}}}", exp_opts.join(","))
+}
+
+/// Quote a string as a JSON string literal.
+fn json_quote(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c <= '\u{1f}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Simple base64 encoding without external dependencies.
 fn base64_encode(input: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -387,5 +443,50 @@ mod tests {
         };
         let client = NaiveClient::new(config).unwrap();
         assert_eq!(client.authorization, "Basic dXNlcjpwYXNz");
+    }
+
+    #[test]
+    fn test_host_resolver_rules_json() {
+        let config = NaiveClientConfig {
+            server_address: "proxy.example.com:443".into(),
+            host_resolver_rules: Some("MAP proxy.example.com 1.2.3.4".into()),
+            ..Default::default()
+        };
+        let json = experimental_options_json(&config);
+        assert!(
+            json.contains(
+                r#""HostResolverRules":{"host_resolver_rules":"MAP proxy.example.com 1.2.3.4"}"#
+            ),
+            "{json}"
+        );
+        // The JSON tuning block must survive the extra option.
+        assert!(json.contains(r#""SPDY":"#), "{json}");
+        assert!(!json.contains("dns_config"), "{json}");
+    }
+
+    #[test]
+    fn test_host_resolver_rules_json_escapes() {
+        let config = NaiveClientConfig {
+            server_address: "proxy.example.com:443".into(),
+            host_resolver_rules: Some("MAP \"quoted\" \\ host\n".into()),
+            ..Default::default()
+        };
+        let json = experimental_options_json(&config);
+        assert!(
+            json.contains(r#""host_resolver_rules":"MAP \"quoted\" \\ host\n""#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn test_host_resolver_rules_validation() {
+        for rules in ["", "   ", "MAP host\0 1.2.3.4"] {
+            let config = NaiveClientConfig {
+                server_address: "proxy.example.com:443".into(),
+                host_resolver_rules: Some(rules.into()),
+                ..Default::default()
+            };
+            assert!(NaiveClient::new(config).is_err(), "{rules:?}");
+        }
     }
 }

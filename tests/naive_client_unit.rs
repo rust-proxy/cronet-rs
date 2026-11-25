@@ -49,6 +49,7 @@ fn test_config_with_all_fields() {
         ech_enabled: true,
         ech_config_list: Some(vec![0x00, 0x01, 0x02]),
         ech_query_server_name: Some("ech.proxy.example.com".into()),
+        host_resolver_rules: Some("MAP proxy.example.com 203.0.113.7".into()),
     };
     let result = NaiveClient::new(config);
     assert!(result.is_ok());
