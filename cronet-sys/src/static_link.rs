@@ -24,6 +24,16 @@ impl Library {
     }
 }
 
+/// Static builds have no dynamically loaded module.
+pub fn loaded_library_path() -> Option<&'static std::path::Path> {
+    None
+}
+
+/// Static builds do not select a library at runtime.
+pub fn conflicting_library(_requested: &std::path::Path) -> Option<&'static std::path::Path> {
+    None
+}
+
 /// No-op in static mode — the library is already linked.
 /// # Safety
 ///

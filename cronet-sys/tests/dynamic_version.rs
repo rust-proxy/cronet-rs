@@ -6,13 +6,21 @@
 fn reject_old_abi_then_load_154() {
     let old = std::env::var("CRONET_143_LIBRARY").expect("143 library path");
     let new = std::env::var("CRONET_154_LIBRARY").expect("154 library path");
+    assert!(cronet_sys::loaded_library_path().is_none());
     let error = unsafe { cronet_sys::load_library(&old) }.expect_err("old dialer ABI");
     assert!(
         error.to_string().contains("incompatible Cronet 143."),
         "{error}"
     );
+    assert!(cronet_sys::loaded_library_path().is_none());
     unsafe {
         cronet_sys::load_library(&new).expect("retry with the 154 library");
+        let path = std::path::Path::new(&new);
+        assert_eq!(
+            cronet_sys::loaded_library_path(),
+            Some(path.canonicalize().unwrap().as_path())
+        );
+        assert!(cronet_sys::conflicting_library(path).is_none());
         let engine = cronet_sys::Cronet_Engine_Create();
         cronet_sys::Cronet_Engine_SetUdpDialer(engine, None, std::ptr::null_mut(), None);
         cronet_sys::Cronet_Engine_Destroy(engine);

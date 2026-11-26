@@ -7,6 +7,9 @@ the high-level crate.
 
 These bindings use the SagerNet Chromium 154.0.8037.49 dialer ABI. Load a matching shared library or supply the matching static archive. Dynamic loading reports incompatible versions before registering callbacks.
 
+After a successful dynamic load, `loaded_library_path()` returns the module path reported by the OS. Use `conflicting_library(path)` to check a later explicit request against the active library without loading a second one. Both return `None` for static builds.
+
+
 The vendored C headers (the ABI source of truth) live in [`include/`](include/).
 
 ## Backends

@@ -16,6 +16,13 @@ links = "cronet"
 # target compiles the same dynamic backend; Apple builds only use it when the
 # `dynamic` feature is enabled.
 libloading = "0.8"
+same-file = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
 
 # Build-time downloader deps — only pulled in when the `download` feature is on.
 [build-dependencies]

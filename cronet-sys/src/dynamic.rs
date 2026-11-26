@@ -6,11 +6,136 @@
 #![allow(non_snake_case, dead_code, unsafe_op_in_unsafe_fn)]
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 pub use libloading::Library;
 
-static LIB: OnceLock<Library> = OnceLock::new();
+struct LoadedLibrary {
+    handle: Library,
+    path: PathBuf,
+}
+
+static LIB: OnceLock<LoadedLibrary> = OnceLock::new();
+// Serialize native library initialization and ABI probing. A failed attempt may be retried.
+static LOAD_LOCK: Mutex<()> = Mutex::new(());
+
+/// Filesystem path reported by the OS for the active Cronet module.
+pub fn loaded_library_path() -> Option<&'static Path> {
+    LIB.get().map(|lib| lib.path.as_path())
+}
+
+fn candidate(path: &Path) -> Option<PathBuf> {
+    if path.is_dir() {
+        find_platform_library(path)
+    } else {
+        Some(path.to_owned())
+    }
+}
+
+/// If an explicit file, directory or loader search name selects a different library,
+/// return the path of the one already in use. Never load the requested library here.
+pub fn conflicting_library(requested: &Path) -> Option<&'static Path> {
+    let loaded = LIB.get()?;
+    let matches = candidate(requested).is_some_and(|path| {
+        if path.file_name() == Some(path.as_os_str()) {
+            return matches_search_name(&path, loaded);
+        }
+        path == loaded.path || same_file::is_same_file(&path, &loaded.path).unwrap_or(false)
+    });
+    (!matches).then_some(loaded.path.as_path())
+}
+
+#[cfg(windows)]
+fn matches_search_name(name: &Path, loaded: &LoadedLibrary) -> bool {
+    libloading::os::windows::Library::open_already_loaded(name)
+        .is_ok_and(|module| same_module(&module.into(), &loaded.handle))
+}
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_vendor = "apple",
+    target_os = "freebsd"
+))]
+fn matches_search_name(name: &Path, loaded: &LoadedLibrary) -> bool {
+    // RTLD_NOLOAD only acquires a reference to an already resident module.
+    unsafe { libloading::os::unix::Library::open(Some(name), libc::RTLD_NOLOAD | libc::RTLD_LAZY) }
+        .is_ok_and(|module| same_module(&module.into(), &loaded.handle))
+}
+
+#[cfg(not(any(
+    windows,
+    target_os = "linux",
+    target_os = "android",
+    target_vendor = "apple",
+    target_os = "freebsd"
+)))]
+fn matches_search_name(name: &Path, loaded: &LoadedLibrary) -> bool {
+    loaded.path.file_name() == Some(name.as_os_str())
+}
+
+fn same_module(a: &Library, b: &Library) -> bool {
+    // Reading an exported symbol's address does not call it.
+    unsafe {
+        let (Ok(a), Ok(b)) = (
+            a.get::<*const ()>(b"Cronet_Engine_Create"),
+            b.get::<*const ()>(b"Cronet_Engine_Create"),
+        ) else {
+            return false;
+        };
+        *a == *b
+    }
+}
+
+#[cfg(unix)]
+fn module_path(symbol: *const ()) -> std::io::Result<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut info = std::mem::MaybeUninit::<libc::Dl_info>::uninit();
+    // The symbol belongs to the live library and dladdr initializes info on success.
+    unsafe {
+        if libc::dladdr(symbol.cast(), info.as_mut_ptr()) == 0 {
+            return Err(std::io::Error::other(
+                "dladdr could not locate the Cronet module",
+            ));
+        }
+        let name = info.assume_init().dli_fname;
+        if name.is_null() {
+            return Err(std::io::Error::other(
+                "dladdr returned no Cronet module path",
+            ));
+        }
+        Ok(PathBuf::from(std::ffi::OsStr::from_bytes(
+            std::ffi::CStr::from_ptr(name).to_bytes(),
+        )))
+    }
+}
+
+#[cfg(windows)]
+fn module_path(symbol: *const ()) -> std::io::Result<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleFileNameW, GetModuleHandleExW,
+    };
+    let mut module = 0;
+    let mut name = vec![0u16; 32768];
+    // The library owns the module reference throughout these calls.
+    unsafe {
+        if GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            symbol.cast(),
+            &mut module,
+        ) == 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        let len = GetModuleFileNameW(module, name.as_mut_ptr(), name.len() as u32) as usize;
+        if len == 0 || len == name.len() {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(std::ffi::OsString::from_wide(&name[..len]).into())
+    }
+}
 
 /// Load the libcronet shared library at runtime.
 ///
@@ -30,14 +155,13 @@ static LIB: OnceLock<Library> = OnceLock::new();
 /// Use a trusted SagerNet Cronet library. A failed load can be retried.
 /// After a successful load the library stays active for the process lifetime.
 pub unsafe fn load_library(path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let p = Path::new(path);
-    let resolved = if p.is_dir() {
-        find_platform_library(p).ok_or_else(|| {
-            format!("no loadable cronet library for this platform found in directory {path:?}")
-        })?
-    } else {
-        p.to_path_buf()
-    };
+    let _guard = LOAD_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+    if LIB.get().is_some() {
+        return Err("library already loaded".into());
+    }
+    let resolved = candidate(Path::new(path)).ok_or_else(|| {
+        format!("no loadable cronet library for this platform found in directory {path:?}")
+    })?;
     let lib = Library::new(&resolved)?;
     // Both revisions export the same dialer names with incompatible signatures.
     let create = lib.get::<unsafe extern "C" fn() -> super::RawEngine>(b"Cronet_Engine_Create")?;
@@ -61,7 +185,10 @@ pub unsafe fn load_library(path: &str) -> Result<(), Box<dyn std::error::Error>>
             format!("incompatible Cronet {actual}, expected SagerNet 154.0.8037.49").into(),
         );
     }
-    LIB.set(lib).map_err(|_| "library already loaded".into())
+    let path = module_path(*create as *const ())?;
+    let path = path.canonicalize().unwrap_or(path);
+    LIB.set(LoadedLibrary { handle: lib, path })
+        .map_err(|_| "library already loaded".into())
 }
 
 /// Recursively search `dir` (and its sub-directories) for the loadable library
@@ -221,7 +348,7 @@ fn os_bonus(lower: &str) -> i32 {
 macro_rules! ffi_call {
     ($name:literal, $sig:ty, $($arg:expr),* $(,)?) => {{
         let lib = LIB.get().expect("libcronet not loaded; call load_library() first");
-        let func: libloading::Symbol<$sig> = lib.get($name).unwrap_or_else(|e| {
+        let func: libloading::Symbol<$sig> = lib.handle.get($name).unwrap_or_else(|e| {
             panic!("symbol {} not found: {}", String::from_utf8_lossy($name), e)
         });
         func($($arg),*)
